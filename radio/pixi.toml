@@ -1,0 +1,11 @@
+[workspace]
+authors = ["fxwiegand <fxwiegand@wgdnet.de>"]
+channels = ["conda-forge"]
+name = "radio_ws2812b"
+platforms = ["osx-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+scipy = ">=1.17.1,<2"
