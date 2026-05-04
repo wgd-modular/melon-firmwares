@@ -196,6 +196,15 @@ void loop() {
   bool newReverse = (dirVal >= 512);
   if (newReverse != isReverse) {
     isReverse = newReverse;
+    // Clamp accumulator into valid range to prevent underflow after flip
+    if (playing) {
+      uint32_t idx = tblAcc >> FRAC_BITS;
+      if (!isReverse && idx >= endPos16 && endPos16 > 0) {
+        tblAcc = (endPos16 - 1) << FRAC_BITS;
+      } else if (isReverse && idx <= startPos16) {
+        tblAcc = (startPos16 + 1) << FRAC_BITS;
+      }
+    }
   }
 
   loopMode = (digitalRead(0) == HIGH);

@@ -107,7 +107,12 @@ def merge_uf2_files(file_list, output_path):
             if addr < FLASH_START or addr >= FLASH_END:
                 skipped += 1
                 continue
-            if addr not in seen_addrs:
+            if addr in seen_addrs:
+                print(
+                    f"  Warning: {path} duplicate address 0x{addr:08X} (skipped)",
+                    file=sys.stderr,
+                )
+            else:
                 seen_addrs.add(addr)
                 all_blocks.append(block)
                 added += 1

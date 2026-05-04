@@ -2,7 +2,7 @@
  * Melon Multi-Firmware Bootloader
  *
  * Manages 8 firmware slots on a Seeed XIAO RP2350 (Melon / MOD2 module).
- * On boot, checks for triple-click on the button (GPIO6) to enter the
+ * On boot, checks for a 5-second button hold on GPIO6 to enter the
  * slot selection menu. Otherwise jumps directly to the active firmware.
  *
  * Flash layout (128 KB bootloader + 8 x 240 KB slots = 2 MB):
@@ -33,6 +33,7 @@
 #include "hardware/watchdog.h"
 #include "hardware/structs/watchdog.h"
 #include "hardware/irq.h"
+#include "hardware/pio.h"
 
 /* ------------------------------------------------------------------
    Hardware pins (Melon / MOD2 PCB)
@@ -81,12 +82,8 @@ static const uint32_t SLOT_COLOR[NUM_SLOTS] = {
     0xFF00FF,  // Slot 7 MOD303  — Magenta
 };
 
-static const char *SLOT_NAME[NUM_SLOTS] = {
-    "Braids", "Kick", "Clap", "Hi-Hat", "VCO", "FM Drum", "Claves", "MOD303"
-};
-
 /* ------------------------------------------------------------------
-   Triple-click timing (milliseconds)
+   Boot hold timing (milliseconds)
    ------------------------------------------------------------------ */
 #define BOOT_HOLD_MS        5000  // Hold button 5 s at boot to enter menu
 #define BOOT_CHECK_INTERVAL 50    // Poll interval during boot hold detection
@@ -164,6 +161,14 @@ void jump_to_slot(uint8_t slot) {
     led.setPixelColor(0, 0);
     led.show();
 
+    // Reset PIO state machines (NeoPixel uses PIO on RP2350)
+    for (uint sm = 0; sm < 4; sm++) {
+        pio_sm_set_enabled(pio0, sm, false);
+        pio_sm_set_enabled(pio1, sm, false);
+    }
+    pio_clear_instruction_memory(pio0);
+    pio_clear_instruction_memory(pio1);
+
     // Disable SysTick (Arduino millis timer)
     systick_hw->csr = 0;  // CTRL
     systick_hw->rvr = 0;  // LOAD
@@ -208,33 +213,8 @@ bool button_released() {
 }
 
 /* ------------------------------------------------------------------
-   Debounced wait for button state change
-   ------------------------------------------------------------------ */
-bool wait_for_press(uint32_t timeout_ms) {
-    uint32_t start = millis();
-    while (millis() - start < timeout_ms) {
-        if (button_pressed()) {
-            delay(20);  // debounce
-            if (button_pressed()) return true;
-        }
-    }
-    return false;
-}
-
-bool wait_for_release(uint32_t timeout_ms) {
-    uint32_t start = millis();
-    while (millis() - start < timeout_ms) {
-        if (button_released()) {
-            delay(20);  // debounce
-            if (button_released()) return true;
-        }
-    }
-    return false;
-}
-
-/* ------------------------------------------------------------------
-   Detect triple-click within the startup window.
-   Returns true if triple-click detected.
+   Detect 5-second button hold at startup.
+   Returns true if hold detected.
    ------------------------------------------------------------------ */
 void set_led_color(uint32_t color, uint8_t brightness = 255);
 
@@ -283,6 +263,12 @@ uint8_t slot_menu(uint8_t current_slot) {
     uint8_t selected = current_slot;
     uint32_t last_activity = millis();
 
+    // Record pot position at menu entry; only accept pot input after
+    // it has moved significantly (deadband prevents ADC noise jitter).
+    int pot_anchor = analogRead(PIN_POT1);
+    bool pot_active = false;
+    const int POT_DEADBAND = 64;  // ~6% of 10-bit range
+
     // Initial LED: blink current slot color to show menu entry
     for (int i = 0; i < 3; i++) {
         set_led_color(SLOT_COLOR[selected], 255);
@@ -322,16 +308,26 @@ uint8_t slot_menu(uint8_t current_slot) {
             } while (!slot_is_valid(selected) && selected != start);
 
             set_led_color(SLOT_COLOR[selected], 255);
+            // Re-anchor pot so it doesn't immediately override button selection
+            pot_anchor = analogRead(PIN_POT1);
+            pot_active = false;
         }
 
-        // Optional: read Pot 1 for direct slot jump
+        // Pot 1 for direct slot jump — only after pot moves past deadband
         int pot_val = analogRead(PIN_POT1);
-        uint8_t pot_slot = (pot_val * NUM_SLOTS) / 1024;
-        if (pot_slot >= NUM_SLOTS) pot_slot = NUM_SLOTS - 1;
-        if (pot_slot != selected && slot_is_valid(pot_slot)) {
-            selected = pot_slot;
-            set_led_color(SLOT_COLOR[selected], 255);
-            last_activity = millis();
+        if (!pot_active) {
+            if (abs(pot_val - pot_anchor) > POT_DEADBAND) {
+                pot_active = true;
+            }
+        }
+        if (pot_active) {
+            uint8_t pot_slot = (pot_val * NUM_SLOTS) / 1024;
+            if (pot_slot >= NUM_SLOTS) pot_slot = NUM_SLOTS - 1;
+            if (pot_slot != selected && slot_is_valid(pot_slot)) {
+                selected = pot_slot;
+                set_led_color(SLOT_COLOR[selected], 255);
+                last_activity = millis();
+            }
         }
 
         delay(20);
@@ -358,7 +354,7 @@ void setup() {
     uint8_t active = read_active_slot();
     if (active >= NUM_SLOTS) active = 0;
 
-    // Check if we got here via firmware triple-click (watchdog scratch magic)
+    // Check if we got here via firmware button hold (watchdog scratch magic)
     bool menu_requested = (watchdog_hw->scratch[0] == 0xCAFEAFFE);
     watchdog_hw->scratch[0] = 0;
 

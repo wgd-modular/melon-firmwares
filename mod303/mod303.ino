@@ -17,8 +17,8 @@
 */
 
 #include <Arduino.h>
-#include "melon_led.h"
 #define MY_COLOR 0xFF00FF
+#include "melon_led.h"
 #include "hardware/pwm.h"
 #include "hardware/irq.h"
 #include "pico/time.h"
@@ -27,7 +27,6 @@ static const uint8_t PIN_AUDIO = 1;
 static const uint8_t PIN_CLK = 7;    // clock input GPIO
 static const uint8_t PIN_ACC = 0;    // accent hold input GPIO
 static const uint8_t PIN_BTN = 6;
-static const uint8_t MOD2_PIN_LED = 5;
 
 // -------------------- AUDIO --------------------
 static const uint32_t SAMPLE_RATE = 31250;
@@ -123,6 +122,10 @@ static uint32_t gateOffAtMs = 0;
 
 static uint32_t internalIntervalMs = 125;
 static uint32_t lastInternalMs = 0;
+
+// Non-blocking swing: defer step trigger until swing delay elapses
+static bool     swingPending  = false;
+static uint32_t swingFireAtMs = 0;
 
 // LED blink
 static uint32_t ledOffAtMs = 0;
@@ -549,14 +552,24 @@ void loop() {
     mutateStepAt(stepIndex, prob);
     enforceRhythmConstraints();
 
-    // swing delay (tiny; audio runs in IRQ)
+    // non-blocking swing: defer trigger if swing delay > 0
     uint32_t dly = swingDelayMsForStep(stepIndex, swingAmt);
-    if (dly) delay(dly);
+    if (dly) {
+      swingPending  = true;
+      swingFireAtMs = millis() + dly;
+    } else {
+      stepStartMs = millis();
+      triggerStep(stepIndex);
+      gateOpen = pattern[stepIndex].gate;
+      gateEnv.open();
+    }
+  }
 
-    stepStartMs = millis();
+  // ---------- Fire deferred swing step ----------
+  if (swingPending && millis() >= swingFireAtMs) {
+    swingPending = false;
+    stepStartMs  = millis();
     triggerStep(stepIndex);
-
-    // open gate for gated steps
     gateOpen = pattern[stepIndex].gate;
     gateEnv.open();
   }
@@ -579,13 +592,15 @@ void loop() {
       enforceRhythmConstraints();
 
       uint32_t dly = swingDelayMsForStep(stepIndex, swingAmt);
-      if (dly) delay(dly);
-
-      stepStartMs = millis();
-      triggerStep(stepIndex);
-
-      gateOpen = pattern[stepIndex].gate;
-      gateEnv.open();
+      if (dly) {
+        swingPending  = true;
+        swingFireAtMs = millis() + dly;
+      } else {
+        stepStartMs = millis();
+        triggerStep(stepIndex);
+        gateOpen = pattern[stepIndex].gate;
+        gateEnv.open();
+      }
     }
   }
   melon_check_bootloader_hold();

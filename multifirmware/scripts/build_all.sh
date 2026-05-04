@@ -9,7 +9,12 @@ BUILD_DIR="${BUILD_DIR:-/tmp/melon-build}"
 OUTPUT_DIR="$PROJECT_DIR/output"
 
 BOARD="rp2040:rp2040:seeed_xiao_rp2350"
-ARDUINO_CORE_DIR="$HOME/.arduino15/packages/rp2040/hardware/rp2040/5.6.0"
+ARDUINO_CORE_DIR="$(find "$HOME/.arduino15/packages/rp2040/hardware/rp2040" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort -V | tail -1)"
+if [[ -z "$ARDUINO_CORE_DIR" || ! -d "$ARDUINO_CORE_DIR" ]]; then
+    echo "ERROR: Could not find rp2040 Arduino core. Install via arduino-cli."
+    exit 1
+fi
+echo "Arduino core: $ARDUINO_CORE_DIR"
 LINKER_TEMPLATE="$ARDUINO_CORE_DIR/lib/rp2350/memmap_default.ld"
 LINKER_BACKUP="$LINKER_TEMPLATE.orig"
 
@@ -59,7 +64,7 @@ cp "$BOOTLOADER_BUILD/bootloader.ino.uf2" "$OUTPUT_DIR/bootloader.uf2"
 echo "Bootloader: OK"
 echo ""
 
-echo "--- Patching firmwares for Melon (WS2812B LED + triple-click) ---"
+echo "--- Patching firmwares for Melon (WS2812B LED + button hold) ---"
 bash "$SCRIPT_DIR/patch_led.sh"
 echo ""
 
@@ -94,6 +99,8 @@ for slot in $(seq 0 $((NUM_SLOTS - 1))); do
         --build-property "build.fs_end=$eeprom_start_dec" \
         --build-property "compiler.c.elf.extra_flags=-Wl,--allow-multiple-definition" \
         "$ino" 2>&1 | tail -3
+    # --allow-multiple-definition: patch_led.sh injects melon_led.h which brings
+    # a NeoPixel instance that may duplicate symbols from original firmware LED code.
 
     cp "$SLOT_BUILD/$dir.ino.uf2" "$OUTPUT_DIR/slot${slot}_${name}.uf2"
 
@@ -116,6 +123,8 @@ done
 python3 "$SCRIPT_DIR/merge_uf2.py" \
     -o "$OUTPUT_DIR/melon_combined.uf2" \
     "${UF2_LIST[@]}"
+
+rm -rf "${BACKUP_DIR:-/tmp/melon-patch-backup}"
 
 echo ""
 echo "=== Build complete ==="

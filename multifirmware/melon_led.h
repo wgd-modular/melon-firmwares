@@ -8,12 +8,15 @@
 #define MELON_BOOTLOADER_MAGIC 0xCAFEAFFE
 #define MELON_HOLD_TO_MENU_MS 5000
 
-static Adafruit_NeoPixel __melon_neo(1, MELON_LED_PIN, NEO_GRB + NEO_KHZ800);
-static bool __melon_neo_ready = false;
+// Using inline (C++17) to avoid duplicate instances if included from
+// multiple translation units.  Arduino single-TU builds don't strictly
+// need this, but it future-proofs against multi-file sketches.
+inline Adafruit_NeoPixel __melon_neo(1, MELON_LED_PIN, NEO_GRB + NEO_KHZ800);
+inline bool __melon_neo_ready = false;
 
-static uint32_t __melon_slot_color = 0;
-static uint32_t __melon_hold_start = 0;
-static bool     __melon_btn_was_down = false;
+inline uint32_t __melon_slot_color = 0;
+inline uint32_t __melon_hold_start = 0;
+inline bool     __melon_btn_was_down = false;
 
 inline void melon_led_begin() {
     __melon_neo.begin();
