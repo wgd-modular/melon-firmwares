@@ -135,27 +135,17 @@ void on_pwm_wrap() {
 
 void onTrigger() {
   playing = false;
-  delay(5);
 
   uint16_t posVal       = 1023 - analogRead(A2);
   uint32_t startPercent = (uint32_t)posVal * 100UL / 1023UL;
   startPos16            = (SAMPLE_LENGTH * startPercent) / 100UL;
   endPos16              = SAMPLE_LENGTH;
 
-  uint16_t dirVal = analogRead(A1);
-  isReverse       = (dirVal >= 512);
-
   if (!isReverse) {
     tblAcc = startPos16 << FRAC_BITS;
   } else {
     tblAcc = (endPos16 - 1) << FRAC_BITS;
   }
-
-  uint16_t raw = analogRead(A0);
-  float rate   = 0.5f + (raw / 1023.0f);
-  tblStepFP    = uint32_t(rate * float(1 << FRAC_BITS));
-
-  loopMode = (digitalRead(0) == HIGH);
 
   // ── White flash 80 ms, then restore direction color in loop() ─────────────
   led.setPixelColor(0, led.Color(255, 255, 255));
@@ -198,21 +188,30 @@ void setup() {
 }
 
 void loop() {
-  // ── Restore direction color after 80 ms trigger flash ────────────────────
+  uint16_t raw = analogRead(A0);
+  float rate   = 0.5f + (raw / 1023.0f);
+  tblStepFP    = uint32_t(rate * float(1 << FRAC_BITS));
+
+  uint16_t dirVal = analogRead(A1);
+  bool newReverse = (dirVal >= 512);
+  if (newReverse != isReverse) {
+    isReverse = newReverse;
+  }
+
+  loopMode = (digitalRead(0) == HIGH);
+
   if (ledTrigOn && millis() >= ledTrigOffAt) {
     led.setPixelColor(0, isReverse ? led.Color(255, 100, 0) : led.Color(0, 255, 80));
     led.show();
     ledTrigOn = false;
   }
-  // ──────────────────────────────────────────────────────────────────────────
 
-  // ── Keep direction color in sync while not flashing ──────────────────────
-  // (direction can change between triggers as the pot is moved)
   static bool lastReverse = false;
   if (!ledTrigOn && isReverse != lastReverse) {
     lastReverse = isReverse;
     led.setPixelColor(0, isReverse ? led.Color(255, 100, 0) : led.Color(0, 255, 80));
     led.show();
   }
-  // ──────────────────────────────────────────────────────────────────────────
+
+  delay(5);
 }
