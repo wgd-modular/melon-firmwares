@@ -64,8 +64,8 @@ kit_configs = [
     ("user_k", "user_s", "user_h", "user", ["user_kick.wav", "user_snare.wav", "user_hihat.wav"])
 ]
 
-base_dir = "/Users/vmaurer/Music/Melon/melon-firmwares/drums/samples"
-output_file = "/Users/vmaurer/Music/Melon/melon-firmwares/drums/drum_samples.h"
+base_dir = os.path.dirname(__file__)
+output_file = os.path.join(base_dir, "..", "drum_samples.h")
 
 print("Building Master Drum Header...")
 with open(output_file, "w") as f:
