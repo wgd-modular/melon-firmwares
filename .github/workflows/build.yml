@@ -1,0 +1,100 @@
+name: Build Firmwares
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      firmwares: ${{ steps.scan.outputs.firmwares }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan firmware directories
+        id: scan
+        run: |
+          dirs=()
+          for ino in *//*.ino; do
+            dir="${ino%%/*}"
+            base="${ino##*/}"
+            base="${base%.ino}"
+            [ "$dir" = "$base" ] && dirs+=("$dir")
+          done
+          json=$(printf '%s\n' "${dirs[@]}" | jq -R -s -c '[split("\n")[] | select(length > 0)]')
+          echo "firmwares=$json" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: discover
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        firmware: ${{ fromJson(needs.discover.outputs.firmwares) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Configure board manager
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls \
+            https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+
+      - name: Install RP2350 core
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install rp2040:rp2040
+
+      - name: Install common libraries
+        run: arduino-cli lib install "Adafruit NeoPixel" "Bounce2"
+
+      - name: Install firmware-specific libraries
+        run: |
+          libs_file="${{ matrix.firmware }}/libraries.txt"
+          [ ! -f "$libs_file" ] && exit 0
+          arduino-cli config set library.enable_unsafe_install true
+          while IFS= read -r line || [ -n "$line" ]; do
+            [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+            if [[ "$line" == git:* ]]; then
+              arduino-cli lib install --git-url "${line#git:}"
+            else
+              arduino-cli lib install "$line"
+            fi
+          done < "$libs_file"
+
+      - name: Compile ${{ matrix.firmware }}
+        id: compile
+        run: |
+          arduino-cli compile \
+            --fqbn rp2040:rp2040:seeed_xiao_rp2350 \
+            --output-dir output \
+            ${{ matrix.firmware }}/
+
+      - name: Rename output
+        if: steps.compile.outcome == 'success'
+        run: mv "output/${{ matrix.firmware }}.ino.uf2" "output/${{ matrix.firmware }}.uf2"
+
+      - name: Upload artifact
+        if: steps.compile.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.firmware }}
+          path: output/${{ matrix.firmware }}.uf2
+
+      - name: Attach to release
+        if: steps.compile.outcome == 'success' && github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "output/${{ matrix.firmware }}.uf2" --clobber
