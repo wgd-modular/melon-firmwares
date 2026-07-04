@@ -1,0 +1,6 @@
+# Extra libraries required by this firmware beyond the common set.
+# One entry per line. Prefix git: for GitHub installs, otherwise the
+# Arduino Library Manager name is used.
+RPi_Pico_TimerInterrupt
+git:https://github.com/poetaster/stmlib.git
+git:https://github.com/poetaster/braids.git
