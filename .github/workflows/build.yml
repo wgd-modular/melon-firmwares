@@ -24,7 +24,7 @@ jobs:
             dir="${ino%%/*}"
             base="${ino##*/}"
             base="${base%.ino}"
-            [ "$dir" = "$base" ] && dirs+=("$dir")
+            [ "$dir" = "$base" ] && [ ! -f "$dir/.ci-skip" ] && dirs+=("$dir")
           done
           json=$(printf '%s\n' "${dirs[@]}" | jq -R -s -c '[split("\n")[] | select(length > 0)]')
           echo "firmwares=$json" >> "$GITHUB_OUTPUT"
