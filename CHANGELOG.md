@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.0.1...v1.1.0) (2026-07-04)
+
+
+### Features
+
+* **radio:** live parameter control ([#9](https://github.com/wgd-modular/melon-firmwares/issues/9)) ([d229d9d](https://github.com/wgd-modular/melon-firmwares/commit/d229d9de11b3bfc7408f78c4c7e9db598bae0f16))
+
 ## [1.0.1](https://github.com/wgd-modular/melon-firmwares/compare/v1.0.0...v1.0.1) (2026-07-04)
 
 
