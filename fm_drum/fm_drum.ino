@@ -250,7 +250,7 @@ void setup() {
   sliceAudio = pwm_gpio_to_slice_num(1);
   sliceTimer = pwm_gpio_to_slice_num(2);
 
-  pwm_set_clkdiv(sliceAudio, 1);
+  pwm_set_clkdiv(sliceAudio, 150000000.0f / (96000.0f * 1024.0f));
   pwm_set_wrap(sliceAudio, 1023);
   pwm_set_enabled(sliceAudio, true);
   pwm_set_clkdiv(sliceTimer, 1);
