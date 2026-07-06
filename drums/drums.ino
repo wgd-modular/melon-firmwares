@@ -1211,7 +1211,7 @@ void setup() {
 
   pinMode(1, OUTPUT); gpio_set_function(1, GPIO_FUNC_PWM);
   sliceAudio = pwm_gpio_to_slice_num(1);
-  pwm_set_clkdiv(sliceAudio, 1); pwm_set_wrap(sliceAudio, 1023); pwm_set_enabled(sliceAudio, true);
+  pwm_set_clkdiv(sliceAudio, 150000000.0f / (96000.0f * 1024.0f)); pwm_set_wrap(sliceAudio, 1023); pwm_set_enabled(sliceAudio, true);
 
   pinMode(2, OUTPUT); gpio_set_function(2, GPIO_FUNC_PWM);
   sliceIRQ = pwm_gpio_to_slice_num(2);

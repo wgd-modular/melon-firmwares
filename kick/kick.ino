@@ -238,7 +238,7 @@ void setup() {
   pinMode(2, OUTPUT); gpio_set_function(2, GPIO_FUNC_PWM);
   slice_num2 = pwm_gpio_to_slice_num(2);
 
-  pwm_set_clkdiv(slice_num1, 1); pwm_set_wrap(slice_num1, 1023); pwm_set_enabled(slice_num1, true);
+  pwm_set_clkdiv(slice_num1, 150000000.0f / (96000.0f * 1024.0f)); pwm_set_wrap(slice_num1, 1023); pwm_set_enabled(slice_num1, true);
   pwm_set_clkdiv(slice_num2, 1); pwm_set_wrap(slice_num2, 4095); pwm_set_enabled(slice_num2, true);
   pwm_clear_irq(slice_num2);
   pwm_set_irq_enabled(slice_num2, true);

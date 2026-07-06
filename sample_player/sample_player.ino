@@ -188,7 +188,7 @@ void setup() {
   sliceAudio = pwm_gpio_to_slice_num(1);
   sliceIRQ   = pwm_gpio_to_slice_num(2);
 
-  pwm_set_clkdiv(sliceAudio, 1);
+  pwm_set_clkdiv(sliceAudio, 150000000.0f / (96000.0f * 1024.0f));
   pwm_set_wrap  (sliceAudio, PWM_FS);
   pwm_set_enabled(sliceAudio, true);
 
