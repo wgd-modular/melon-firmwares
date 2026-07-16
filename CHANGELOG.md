@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.1.1...v1.2.0) (2026-07-16)
+
+
+### Features
+
+* Add fxloperformer and RALPS firmwares ([#15](https://github.com/wgd-modular/melon-firmwares/issues/15)) ([497b49c](https://github.com/wgd-modular/melon-firmwares/commit/497b49ce1d0b485a2ab3b7304fef0e4bcc927649))
+
 ## [1.1.1](https://github.com/wgd-modular/melon-firmwares/compare/v1.1.0...v1.1.1) (2026-07-06)
 
 
