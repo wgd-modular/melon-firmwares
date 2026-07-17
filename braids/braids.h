@@ -71,130 +71,75 @@ float morph_mod = 0.0f; //IN(9);
 float decay_in = 0.5f; // IN(10);
 float lpg_in = 0.1f ;// IN(11);
 
+// Envelope controls, edited by holding the button and turning the pots.
+// pot0 -> attack, pot1 -> release; pot1 fully clockwise latches drone mode.
+float env_attack_rate  = 0.01f;   // larger = faster attack
+float env_release_rate = 0.001f;  // larger = faster release
+// Drone = pure VCO (VCA held open). This is the default, like hardware Braids:
+// no trigger => the oscillator just drones. Turning the release pot down from
+// fully-clockwise dials in the AD amplitude envelope instead.
+bool  droneMode        = true;
+
+// Current AD envelope level (0..1), exposed so the UI core can drive the LED.
+float ad_env_level     = 0.0f;
+
 
 void updateBraidsAudio() {
     int16_t *buffer = voices[0].pd.buffer;
     uint8_t *sync_buffer = voices[0].pd.sync_buffer;
     size_t size = BLOCK_SIZE;
-    
+
     braids::MacroOscillator *osc = voices[0].pd.osc;
-    
-    // Set pitch
+
     osc->set_pitch(pitch_in);
-    
-    // Set shape/model
+
     uint8_t shape = (int)(engine_in);
     if (shape >= braids::MACRO_OSC_SHAPE_LAST)
         shape -= braids::MACRO_OSC_SHAPE_LAST;
     osc->set_shape(static_cast<braids::MacroOscillatorShape>(shape));
-    
-    // Edge detection for trigger
+
+    osc->set_parameters(timbre_in, morph_in);
+
+    // Edge detection for the trigger input
     bool trigger = (trigger_in > 0.5f);
     bool trigger_flag = (trigger && (!voices[0].last_trig));
     bool trigger_release = (!trigger && voices[0].last_trig);
     voices[0].last_trig = trigger;
-    
-    // Percussive models with built-in envelopes
-    bool is_percussive = (
-        shape == braids::MACRO_OSC_SHAPE_PLUCKED ||
-        shape == braids::MACRO_OSC_SHAPE_BOWED ||
-        shape == braids::MACRO_OSC_SHAPE_BLOWN ||
-        shape == braids::MACRO_OSC_SHAPE_FLUTED ||
-        shape == braids::MACRO_OSC_SHAPE_STRUCK_BELL ||
-        shape == braids::MACRO_OSC_SHAPE_STRUCK_DRUM ||
-        shape == braids::MACRO_OSC_SHAPE_KICK ||
-        shape == braids::MACRO_OSC_SHAPE_SNARE ||
-        shape == braids::MACRO_OSC_SHAPE_CYMBAL ||
-        shape == braids::MACRO_OSC_SHAPE_PARTICLE_NOISE ||
-        shape == braids::MACRO_OSC_SHAPE_DIGITAL_MODULATION
-    );
-    
-    // Models that respond to continuous gate
-    bool is_gated = (
-        shape == braids::MACRO_OSC_SHAPE_VOWEL ||
-        shape == braids::MACRO_OSC_SHAPE_VOWEL_FOF
-    );
-    
-    // Handle different envelope behaviors
-    if (is_percussive) {
-        // Percussive models: trigger on rising edge only
-        if (trigger_flag) {
-            osc->Strike();
-        }
-        
-        // Timbre often controls decay/damping in percussive models
-        // Morph often controls tone/character
-        osc->set_parameters(timbre_in, morph_in);
-        
-    } else if (is_gated) {
-        // Gated models: respond to both trigger and release
-        if (trigger_flag) {
-            osc->Strike();  // Start the sound
-        }
-        
-        // For vowel models, timbre=formant, morph=vowel
-        osc->set_parameters(timbre_in, morph_in);
-        
-        // Some models use the sync buffer for gate info
-        memset(sync_buffer, trigger ? 0xFF : 0x00, size);
-        
-    } else {
-        // Continuous oscillators: add simple AR envelope
-        static float envelope_level = 0.0f;
-        static float target_level = 0.0f;
-        
-        // Trigger sets target
-        if (trigger_flag) {
-            osc->Strike();  // Reset phase
-            target_level = 1.0f;
-        } else if (trigger_release) {
-            target_level = 0.0f;
-        }
-        
-        // Simple attack/release envelope
-        const float attack_rate = 0.01f;   // Adjust: smaller = slower
-        const float release_rate = 0.001f; // Adjust: smaller = slower
-        
-        if (target_level > envelope_level) {
-            envelope_level += attack_rate;
-            if (envelope_level > target_level) 
-                envelope_level = target_level;
-        } else {
-            envelope_level -= release_rate;
-            if (envelope_level < 0.0f) 
-                envelope_level = 0.0f;
-        }
-        
-        // Set oscillator parameters
-        osc->set_parameters(timbre_in, morph_in);
-        
-        // Render audio
-        osc->Render(sync_buffer, buffer, size);
-        
-        // Apply envelope to continuous oscillators
-        for (int i = 0; i < size; i++) {
-            buffer[i] = (int16_t)(buffer[i] * envelope_level);
-        }
-        
-        return; // Skip the normal render below
+
+    // Braids is a VCO: a trigger only excites the physical models and resets
+    // the phase (sync) of the oscillators / retriggers the AD envelope. It
+    // never gates the raw output, so Strike() is the whole trigger behavior.
+    if (trigger_flag) {
+        osc->Strike();
     }
-    
-    // Render audio for percussive and gated models
+
+    // No external hard-sync: keep the per-sample sync buffer clear.
+    memset(sync_buffer, 0, size);
+
+    // Always render. With no trigger this drones (pure VCO); the physical
+    // models stay silent until struck because they decay after excitation,
+    // exactly like hardware Braids.
     osc->Render(sync_buffer, buffer, size);
-    
-    // Optional: Apply additional VCA control based on trigger
-    // This can add punch to percussive sounds or gate continuous ones
-    if (!is_percussive && trigger_in < 0.5f) {
-        // Fade out non-percussive sounds when gate is off
-        static float gate_level = 1.0f;
-        gate_level *= 0.99f; // Simple decay
-        
-        if (trigger_in > 0.5f) {
-            gate_level = 1.0f; // Reset on new trigger
+
+    // Optional AD amplitude envelope on the VCA, dialed in with the button+pot
+    // gesture. Drone mode (release fully open) bypasses it for a pure,
+    // always-open VCO.
+    if (!droneMode) {
+        static float target = 0.0f;
+
+        if (trigger_flag)         target = 1.0f;
+        else if (trigger_release) target = 0.0f;
+
+        if (target > ad_env_level) {
+            ad_env_level += env_attack_rate;
+            if (ad_env_level > 1.0f) ad_env_level = 1.0f;
+        } else {
+            ad_env_level -= env_release_rate;
+            if (ad_env_level < 0.0f) ad_env_level = 0.0f;
         }
-        
-        for (int i = 0; i < size; i++) {
-            buffer[i] = (int16_t)(buffer[i] * gate_level);
+
+        for (size_t i = 0; i < size; i++) {
+            buffer[i] = (int16_t)(buffer[i] * ad_env_level);
         }
     }
 }
