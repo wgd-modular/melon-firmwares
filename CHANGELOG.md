@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.2.0...v1.3.0) (2026-07-17)
+
+
+### Features
+
+* **braids:** add drone mode via button-held envelope editing ([#17](https://github.com/wgd-modular/melon-firmwares/issues/17)) ([4556f05](https://github.com/wgd-modular/melon-firmwares/commit/4556f0541bb5b1a81be2e65f4d8b61b1d1b078c3))
+
 ## [1.2.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.1.1...v1.2.0) (2026-07-16)
 
 
