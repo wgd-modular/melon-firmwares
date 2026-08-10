@@ -162,6 +162,10 @@ float comp_attack, comp_release;
 Resonator master_filter;
 float master_wet = 1.0f;
 
+static const float INPUT_GAIN = 4.0f;
+static const float MASTER_OUTPUT_GAIN = 6.0f;
+static const float NOISE_GATE_THRESH = 0.0025f;
+
 uint sliceAudio, sliceIRQ;
 
 volatile uint32_t last_clock_time = 0;
@@ -224,7 +228,9 @@ void on_pwm_wrap() {
   static int ma_idx = 0;
   ma[ma_idx] = ext_dc_y;
   ma_idx = (ma_idx + 1) & 3;
-  float ext_lp = (ma[0] + ma[1] + ma[2] + ma[3]) * 0.25f;
+  float ext_lp = (ma[0] + ma[1] + ma[2] + ma[3]) * (0.25f * INPUT_GAIN);
+  if (ext_lp >  2.5f) ext_lp =  2.5f;
+  if (ext_lp < -2.5f) ext_lp = -2.5f;
   
   // Noise Gate
   static float gate_env = 0.0f;
@@ -233,8 +239,8 @@ void on_pwm_wrap() {
   else                 gate_env += (rect_in - gate_env) * 0.001f; // slow release
   
   float clean_sig = ext_lp;
-  if (gate_env < 0.006f) {
-      float fade = gate_env * 166.66f;
+  if (gate_env < NOISE_GATE_THRESH) {
+      float fade = gate_env * (1.0f / NOISE_GATE_THRESH);
       clean_sig *= fade * fade; 
   }
   
@@ -332,7 +338,7 @@ void on_pwm_wrap() {
       gain /= comp_env;
   }
   
-  out = global_mixed * gain * 1.5f; 
+  out = global_mixed * gain * MASTER_OUTPUT_GAIN;
   
   // Master DJ Filter
   float dj = params[4].p1; // Master DJ is Page 4

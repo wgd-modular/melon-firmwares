@@ -108,6 +108,27 @@ The final stage of the audio path.
 
 ---
 
+## Output Level
+
+The firmware applies input and output makeup gain so the audio level better
+matches the MOD2 output stage:
+
+```cpp
+static const float INPUT_GAIN = 4.0f;
+static const float MASTER_OUTPUT_GAIN = 6.0f;
+static const float NOISE_GATE_THRESH = 0.0025f;
+```
+
+`INPUT_GAIN` boosts the audio coming from the CV input before the FX chain.
+`MASTER_OUTPUT_GAIN` boosts the final signal before PWM output. The lower noise
+gate threshold helps avoid losing quiet material at the input.
+
+If the output is too low, raise `MASTER_OUTPUT_GAIN` first. If the effects feel
+underfed, raise `INPUT_GAIN`. If the firmware clips or compresses too much,
+lower one or both values.
+
+---
+
 ## Build & Flash Instructions
 
 ### Prerequisites
