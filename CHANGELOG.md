@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/wgd-modular/melon-firmwares/compare/v1.3.0...v1.3.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* Adjust FX LoPerformer MOD2 audio levels ([#19](https://github.com/wgd-modular/melon-firmwares/issues/19)) ([4fdf74b](https://github.com/wgd-modular/melon-firmwares/commit/4fdf74bc3e2499c13fa0eb2d1acf41e537b83969))
+
 ## [1.3.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.2.0...v1.3.0) (2026-07-17)
 
 
