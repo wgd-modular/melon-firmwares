@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.3.1...v1.4.0) (2026-08-14)
+
+
+### Features
+
+* Add Palimpsest firmware ([#22](https://github.com/wgd-modular/melon-firmwares/issues/22)) ([e9a11a6](https://github.com/wgd-modular/melon-firmwares/commit/e9a11a6dfa65522d99f8d884786204dc46711827))
+* Add String Mouth firmware ([#21](https://github.com/wgd-modular/melon-firmwares/issues/21)) ([11863ba](https://github.com/wgd-modular/melon-firmwares/commit/11863ba728f98c1ef7c0245ebe21e937ee755b6c))
+
 ## [1.3.1](https://github.com/wgd-modular/melon-firmwares/compare/v1.3.0...v1.3.1) (2026-08-10)
 
 
