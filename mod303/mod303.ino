@@ -145,6 +145,7 @@ static WaveMode waveMode = SUPERSAW;
 
 // -------------------- UTILS --------------------
 static inline int quantizeSemisFromA2(int raw10) {
+  raw10 = 1023 - raw10;  // A2 is inverted by the MOD2 hardware, correct it
   return map(raw10, 0, 1023, -12, +12);
 }
 
