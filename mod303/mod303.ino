@@ -122,9 +122,6 @@ static uint32_t stepDurMs   = 125;  // estimated from clock
 static uint32_t stepStartMs = 0;
 static uint32_t gateOffAtMs = 0;
 
-static uint32_t internalIntervalMs = 125;
-static uint32_t lastInternalMs = 0;
-
 // LED blink
 static uint32_t ledOffAtMs = 0;
 static inline void ledBlink(uint16_t ms, uint32_t color) {
@@ -567,33 +564,5 @@ void loop() {
     // open gate for gated steps
     gateOpen = pattern[stepIndex].gate;
     gateEnv.open();
-  }
-
-  // ---------- Internal fallback if no external clock ----------
-  if ((micros() - lastClockUs) > 1500000UL) {
-    // internal tempo from A2 so you can demo without clock
-    int a2 = analogRead(A2);
-    internalIntervalMs = map(a2, 0, 1023, 60, 220);
-
-    uint32_t nowMs = millis();
-    if (nowMs - lastInternalMs >= internalIntervalMs) {
-      lastInternalMs = nowMs;
-      stepDurMs = internalIntervalMs;
-
-      stepIndex++;
-      if (stepIndex >= stepLen) stepIndex = 0;
-
-      mutateStepAt(stepIndex, prob);
-      enforceRhythmConstraints();
-
-      uint32_t dly = swingDelayMsForStep(stepIndex, swingAmt);
-      if (dly) delay(dly);
-
-      stepStartMs = millis();
-      triggerStep(stepIndex);
-
-      gateOpen = pattern[stepIndex].gate;
-      gateEnv.open();
-    }
   }
 }
