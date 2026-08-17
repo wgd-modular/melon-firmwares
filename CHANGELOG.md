@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.4.0...v1.5.0) (2026-08-17)
+
+
+### Features
+
+* Add MOD303 acid bass firmware ([1fc6396](https://github.com/wgd-modular/melon-firmwares/commit/1fc63966df37156086d7e8f66de1676b3347920b))
+* Make MOD303 advance only on external clock ([d96db02](https://github.com/wgd-modular/melon-firmwares/commit/d96db02905f8424bf9edba96000306fa98b85df6))
+
+
+### Bug Fixes
+
+* Correct inverted POT3 transpose on MOD303 ([5d4c16c](https://github.com/wgd-modular/melon-firmwares/commit/5d4c16cd185720615a739f7905a3dba404e5bd87))
+
 ## [1.4.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.3.1...v1.4.0) (2026-08-14)
 
 
