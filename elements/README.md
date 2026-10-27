@@ -10,7 +10,7 @@ rest of the controls.
 
 | Control | Function |
 |---|---|
-| **CV (A2)** | Pitch, quantised to semitones (~1V/oct); the knob is a coarse tune |
+| **CV (A2)** | Pitch, quantised to semitones (1V/oct); the knob is a coarse tune |
 | **POT1** | Geometry (full sweep) + Brightness (cycles twice across the knob) |
 | **POT2** | Damping (full sweep) + Position (cycles twice) |
 | **TRIG** | Strike / gate input |
@@ -29,7 +29,11 @@ nothing jumps.
 - **Bow** and **Blow** are continuous, so the voice drones at the CV pitch with
   nothing patched to TRIG.
 - **Strike** is percussive: it plucks on a rising edge at TRIG, or on each new CV
-  note when no trigger is patched.
+  note when no trigger is patched. The strike goes out 1 ms later with a fresh
+  pitch reading, so a sequencer can change CV and gate at the same time.
+
+The CV covers roughly five octaves with C1 at the bottom. If tracking is
+slightly off on your unit, trim `TUNE_CAL` in `elements.ino` against a tuner.
 
 ## LED
 

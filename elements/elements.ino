@@ -2,13 +2,13 @@
 MELON Elements - Mutable Instruments Elements modal / physical-model voice
 
   A single Elements voice for the HAGIWO MOD2 / XIAO RP2350 melon module.
-  CV sets the pitch (quantised to semitones, ~1V/oct); the button switches the
+  CV sets the pitch (quantised to semitones, 1V/oct); the button switches the
   exciter that drives the resonator, and the two pots shape the resonator tone.
 
   --Pin assign---
 POT1     A0       Macro: GEOMETRY (sweeps once) + BRIGHTNESS (cycles twice)
 POT2     A1       Macro: DAMPING (sweeps once) + POSITION (cycles twice)
-CV       A2       Pitch, quantised to semitones (~1V/oct); knob = coarse tune
+CV       A2       Pitch, quantised to semitones (1V/oct, C1 at the bottom); knob = coarse tune
 TRIG     D5       Strike / gate input
 OUT      D7       PWM audio output @ 32 kHz
 BUTTON   D4       Tap = next exciter (Bow/Blow/Strike); hold = shift; double = env/strength
@@ -99,11 +99,38 @@ volatile bool  ctl_gate       = true;
 volatile float meter_level    = 0.0f;    // resonator level, for the LED
 
 // ── Pitch / CV mapping ────────────────────────────────────────────────────────
-// A2 reads pot+CV summed. readpot() already corrects the MOD2 hardware
-// inversion, so a higher CV gives a larger count. ~34 counts per semitone gives
-// roughly 1V/oct (12 semitones/volt) through the MOD2 input divider.
-#define CV_COUNTS_PER_SEMITONE 34.13f
-#define CV_NOTE_OFFSET         8.0f
+// POT3 and the CV jack are summed onto A2 through an inverting stage, so a
+// higher voltage reads lower. The full ADC range spans ~5 V, i.e. ~5 octaves at
+// 1V/oct -- the same scaling HAGIWO's MOD2 VCO, braids and reese_bass use.
+// TUNE_CAL trims the tracking against a tuner if needed.
+const float TUNE_CAL            = 0.992f;
+const float CV_OCTAVES          = 8.3f * (33.0f / 55.0f) * TUNE_CAL;
+const float COUNTS_PER_SEMITONE = 4095.0f / (CV_OCTAVES * 12.0f);
+#define CV_NOTE_OFFSET 24.0f   // MIDI note at the bottom of the range (C1)
+
+#define PITCH_READ_US  1000    // pitch CV is read every 1 ms
+#define STRIKE_DELAY_US 1000   // strike 1 ms after a trigger / new note so the CV has settled
+
+// Reads A2 into the quantised note (0.6 semitone hysteresis, so a note sitting
+// on a boundary doesn't flip as the ADC jitters). Returns true if it changed.
+int curNote = 60;
+
+bool readPitchCV() {
+  uint32_t sum = 0;
+  for (int i = 0; i < POT_AVERAGING; i++) sum += analogRead(AIN2);
+  float counts = 4095.0f - (float)sum / POT_AVERAGING;
+  float noteF  = CV_NOTE_OFFSET + counts / COUNTS_PER_SEMITONE;
+
+  int n = curNote;
+  if (noteF - n > 0.6f || n - noteF > 0.6f) n = (int)lroundf(noteF);
+  if (n < 8)   n = 8;
+  if (n > 120) n = 120;
+
+  bool changed = (n != curNote);
+  curNote  = n;
+  ctl_note = (float)n;
+  return changed;
+}
 
 uint32_t engineColor(int ex) {
   switch (ex) {
@@ -299,7 +326,6 @@ void loop1() {
   if ((now - pot_timer) > POT_SAMPLE_TIME) {
     readpot(0);
     readpot(1);
-    readpot(2);
     pot_timer = now;
   }
 
@@ -341,33 +367,49 @@ void loop1() {
     if (engaged[pot]) applyPot(f, potvalue[pot]);
   }
 
-  // CV -> quantised pitch. The 0.6 semitone hysteresis stops a note that sits
-  // on a boundary from flipping back and forth as the ADC jitters.
-  float noteF = CV_NOTE_OFFSET + (float)potvalue[2] / CV_COUNTS_PER_SEMITONE;
-  static int note = 60;
-  if (noteF - note > 0.6f || note - noteF > 0.6f) note = (int)lroundf(noteF);
-  if (note < 8)   note = 8;
-  if (note > 120) note = 120;
-
-  static int lastNote = 60;
-  bool noteChanged = (note != lastNote);
-  lastNote = note;
-  ctl_note = (float)note;
+  // CV -> quantised pitch, read much faster than the pots so a sequenced CV is
+  // picked up straight away.
+  static uint32_t pitchTimer = 0;
+  uint32_t nowUs = micros();
+  bool noteChanged = false;
+  if ((nowUs - pitchTimer) >= PITCH_READ_US) {
+    noteChanged = readPitchCV();
+    pitchTimer  = nowUs;
+  }
 
   // Gate: bow/blow drone; strike plucks on a trigger, or on a new note when no
   // trigger is patched. A recent trigger suppresses the note-change strike, so
-  // a sequencer sending gate + CV together doesn't fire twice as the CV settles.
-  static uint32_t strikeHoldUntil = 0;
-  static uint32_t lastTrigMs      = 0;
+  // a sequencer sending gate + CV together doesn't fire twice. Either way the
+  // strike goes out 1 ms later with a fresh pitch reading, so a CV that moves
+  // together with the gate has settled; a new note within that window just
+  // pushes the strike back instead of plucking twice.
+  static bool     lastTrig      = false;
+  static bool     strikePending = false;
+  static bool     strikeGate    = false;
+  static uint32_t strikeAtUs    = 0;
+  static uint32_t strikeHoldUs  = 0;
+  static uint32_t lastTrigMs    = 0;
   bool trig = digitalRead(TRIG_PIN);
   if (trig) lastTrigMs = now;
   bool trigActive = (now - lastTrigMs) < 500;
-  if (ctl_exciter == EX_STRIKE) {
-    if (trig || (noteChanged && !trigActive)) strikeHoldUntil = now + 5;
-    ctl_gate = trig || (now < strikeHoldUntil);
-  } else {
-    ctl_gate = true;
+  bool trigEdge   = trig && !lastTrig;
+  lastTrig = trig;
+
+  if (trigEdge || (noteChanged && !trigActive && ctl_exciter == EX_STRIKE)) {
+    strikeGate    = false;               // let the DSP see a fresh rising edge
+    strikePending = true;
+    strikeAtUs    = nowUs + STRIKE_DELAY_US;
   }
+  if (strikePending && (int32_t)(nowUs - strikeAtUs) >= 0) {
+    strikePending = false;
+    readPitchCV();
+    __dmb();                             // note must land before the gate
+    strikeGate   = true;
+    strikeHoldUs = nowUs + 5000;
+  } else if (strikeGate && !trig && (int32_t)(nowUs - strikeHoldUs) >= 0) {
+    strikeGate = false;
+  }
+  ctl_gate = (ctl_exciter == EX_STRIKE) ? strikeGate : true;
 
   // LED: exciter colour is always the identity. Brightness tracks the voice
   // level in normal use; white while holding the shift layer; and a slow
