@@ -10,7 +10,7 @@ MOD2 Braids - Mutable Instruments Braids macro-oscillator (47 models)
   --Pin assign---
 POT1     A0       Timbre
 POT2     A1       Morph
-POT3     A2       Pitch
+POT3     A2       Pitch (knob + 1V/oct CV, summed on A2)
 TRIG     D5       Trigger / gate input
 OUT      D7       PWM audio output @ 48 kHz
 BUTTON   D4       Tap = next model, medium hold = prev, long hold = config, tap = exit
@@ -33,13 +33,18 @@ bool debug = true;
 
 long midiTimer;
 
-float pitch_offset = 36;
-float max_voltage_of_adc = 3.3;
-float voltage_division_ratio = 0.3333333333333;
-float notes_per_octave = 12;
-float volts_per_octave = 1;
+// POT3 and the CV jack are summed onto A2 through an inverting stage, so a
+// higher voltage reads lower. The full ADC range spans ~5 V, i.e. ~5 octaves at
+// 1V/oct -- the same scaling HAGIWO's MOD2 VCO and reese_bass use. TUNE_CAL
+// trims the tracking against a tuner if needed.
+const float TUNE_CAL            = 0.992f;
+const float CV_OCTAVES          = 8.3f * (33.0f / 55.0f) * TUNE_CAL;
+const float COUNTS_PER_SEMITONE = 4095.0f / (CV_OCTAVES * 12.0f);
+const int   PITCH_BOTTOM_NOTE   = 24;     // MIDI note at the bottom of the range (C1)
 
-float mapping_upper_limit = (max_voltage_of_adc / voltage_division_ratio) * notes_per_octave * volts_per_octave;
+#define PITCH_READ_US  1000   // pitch CV is read every 1 ms
+#define TRIG_DELAY_US  1000   // strike 1 ms after the edge so a new CV has settled
+#define TRIG_MIN_US    2000   // shortest trigger the audio core gets to see
 
 #include <hardware/pwm.h>
 #include <PWMAudio.h>
@@ -180,6 +185,25 @@ inline void markSettingsDirty() {
   lastSettingChange = millis();
 }
 
+// ── Pitch CV ─────────────────────────────────────────────────────────────────
+float pitchCounts = 0.0f;   // smoothed A2, flipped so a higher CV is a larger value
+
+void readPitchCV(bool snap) {
+  uint32_t sum = 0;
+  for (int i = 0; i < POT_AVERAGING; i++) sum += analogRead(AIN2);
+  float counts = 4095.0f - (float)sum / POT_AVERAGING;
+
+  // Note-sized jumps are taken straight away, small wobble is smoothed out.
+  // No dead band: that would let the pitch sit a few cents off the CV.
+  float diff = counts - pitchCounts;
+  float k    = fabsf(diff) / (0.5f * COUNTS_PER_SEMITONE);
+  if (snap || k > 1.0f) k = 1.0f;
+  else if (k < 0.15f)   k = 0.15f;
+  pitchCounts += diff * k;
+
+  pitch_in = (PITCH_BOTTOM_NOTE << 7) + (int32_t)(pitchCounts * (128.0f / COUNTS_PER_SEMITONE) + 0.5f);
+}
+
 #define TIMER_INTERRUPT_DEBUG     0
 #define _TIMERINTERRUPT_LOGLEVEL_ 4
 
@@ -279,7 +303,7 @@ void setup() {
 
   readpot(0);
   readpot(1);
-  readpot(2);
+  readPitchCV(true);
 
   int16_t timbre = map(potvalue[0], POT_MIN, POT_MAX, 0, 32767);
   timbre_in = timbre;
@@ -388,30 +412,46 @@ void loop1() {
     morph_in  = map(potvalue[1], POT_MIN, POT_MAX, 0, 32767);
   }
 
-  // pot2 -> pitch (never repurposed).
-  int16_t pitch       = map(potvalue[2], POT_MIN, POT_MAX, 3072, 8192);
-  int16_t pitch_delta = abs(previous_pitch - pitch);
-  if (pitch_delta > 10) {
-    pitch_in       = pitch;
-    previous_pitch = pitch;
+  // Pitch is read on its own, much faster than the timbre/morph pots, so a
+  // sequenced CV is picked up straight away.
+  static uint32_t pitchTimer = 0;
+  uint32_t nowUs = micros();
+  if ((nowUs - pitchTimer) >= PITCH_READ_US) {
+    readPitchCV(false);
+    pitchTimer = nowUs;
   }
 
+  // Trigger: the strike goes out 1 ms after the rising edge, with a fresh
+  // pitch reading taken just before it. Struck models like PLUCK lock their
+  // pitch at the strike, so a CV that changes together with the gate has to be
+  // in place first. Short pulses are latched so they can't be missed.
+  static bool     strikePending = false;
+  static uint32_t strikeAtUs    = 0;
+  static uint32_t trigHoldUs    = 0;
   bool trigPin = digitalRead(TRIG_PIN);
-  if (trigPin) {
-    trigger_in = 1.0f;
-    if (!lastTrigPin) {        // rising edge only: one brief flash per trigger
-      ledTrigOn    = true;
-      ledTrigOffAt = now + 45;
-    }
-  } else {
-    trigger_in = 0.0f;
+  if (trigPin && !lastTrigPin) {
+    trigger_in    = 0.0f;              // let the audio core see a fresh edge
+    strikePending = true;
+    strikeAtUs    = nowUs + TRIG_DELAY_US;
   }
   lastTrigPin = trigPin;
+
+  if (strikePending && (int32_t)(nowUs - strikeAtUs) >= 0) {
+    strikePending = false;
+    readPitchCV(true);
+    __dmb();                           // pitch must land before the trigger
+    trigger_in   = 1.0f;
+    trigHoldUs   = nowUs + TRIG_MIN_US;
+    ledTrigOn    = true;
+    ledTrigOffAt = now + 45;
+  } else if (!strikePending && !trigPin && trigger_in > 0.5f &&
+             (int32_t)(nowUs - trigHoldUs) >= 0) {
+    trigger_in = 0.0f;
+  }
 
   if ((now - pot_timer) > POT_SAMPLE_TIME) {
     readpot(0);
     readpot(1);
-    readpot(2);
 
     pot_timer = now;
   }
