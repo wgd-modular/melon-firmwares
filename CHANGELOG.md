@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/wgd-modular/melon-firmwares/compare/v1.5.0...v1.5.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* Make Braids track 1V/oct on the pitch CV ([dc6dad4](https://github.com/wgd-modular/melon-firmwares/commit/dc6dad45965bf9b63cdb578d67b4b65f14126165))
+
 ## [1.5.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.4.0...v1.5.0) (2026-08-17)
 
 
