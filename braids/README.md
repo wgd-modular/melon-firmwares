@@ -14,11 +14,19 @@ the oscillators, and retriggers the optional AD amplitude envelope.
 |---------|----------|
 | **POT1** (A0) | Timbre |
 | **POT2** (A1) | Morph |
-| **POT3** (A2) | Pitch |
+| **POT3** (A2) | Pitch — knob + 1V/oct CV |
 | **TRIG** (D5) | Trigger / gate input |
 | **OUT** (D7)  | PWM audio out, 48 kHz |
 | **BUTTON** (D4) | Model select + envelope config (see below) |
 | **LED** (GPIO5) | WS2812B status (see below) |
+
+### Pitch
+
+POT3 and the CV jack share A2, so the knob is a coarse tune and the CV adds on
+top at 1V/oct, across roughly five octaves with C1 at the bottom. A trigger
+strikes 1 ms after its rising edge with a fresh pitch reading, so a sequencer can
+change CV and gate at the same time. If tracking is slightly off on your unit,
+trim `TUNE_CAL` in `braids.ino` against a tuner.
 
 ### Button
 
