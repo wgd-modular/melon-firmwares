@@ -80,8 +80,14 @@ jobs:
       - name: Compile ${{ matrix.firmware }}
         id: compile
         run: |
+          fqbn="rp2040:rp2040:seeed_xiao_rp2350"
+          opts="${{ matrix.firmware }}/fqbn-options.txt"
+          if [ -f "$opts" ]; then
+            fqbn="$fqbn:$(head -n1 "$opts" | tr -d '[:space:]')"
+          fi
+          echo "Building with FQBN: $fqbn"
           arduino-cli compile \
-            --fqbn rp2040:rp2040:seeed_xiao_rp2350 \
+            --fqbn "$fqbn" \
             --output-dir output \
             ${{ matrix.firmware }}/
 
