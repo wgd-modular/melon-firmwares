@@ -18,7 +18,7 @@ IN2      GPIO0    Accent  – level × 0.5 when HIGH
 CV       A2       Shared with POT3
 OUT      GPIO1    Audio PWM output (10‑bit)
 BUTTON   GPIO6    Mode toggle & parameter save
-LED      GPIO5    Mode indicator (ON = Mode 1)
+LED      GPIO5    WS2812B — amber = Mode 0, cyan = Mode 1, white flash on trigger (80 ms)
 EEPROM   save 6 parameter
 
 CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
@@ -35,6 +35,16 @@ v1.0  - Init: Initial release
 #include "hardware/irq.h"  // IRQ helpers
 #include <math.h>
 #include <EEPROM.h>  // on‑flash key/value storage
+
+// ── WS2812B ───────────────────────────────────────────────────────────────────
+#include <Adafruit_NeoPixel.h>
+#define LED_PIN   5
+#define LED_COUNT 1
+Adafruit_NeoPixel led(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+bool     ledTrigOn    = false;
+uint32_t ledTrigOffAt = 0;
+// ──────────────────────────────────────────────────────────────────────────────
 
 /**********************  Global compile‑time constants  **********************/
 constexpr int TABLE_SIZE = 4096;                      // wavetable length
@@ -265,7 +275,11 @@ void setup() {
   pinMode(7, INPUT);         // trigger input
   pinMode(0, INPUT);         // accent input (active HIGH)
   pinMode(6, INPUT_PULLUP);  // mode button
-  pinMode(5, OUTPUT);        // mode LED
+
+  led.begin();
+  led.setBrightness(180);
+  led.setPixelColor(0, led.Color(255, 140, 0));  // Mode 0 = amber
+  led.show();
 
   // attach trigger ISR (inline lambda for brevity) -------------------------
   attachInterrupt(
@@ -312,6 +326,11 @@ void setup() {
         env *= expStep;
       }
       irq_set_enabled(PWM_IRQ_WRAP, true);  // resume audio ISR
+
+      led.setPixelColor(0, led.Color(255, 255, 255));
+      led.show();
+      ledTrigOn = true;
+      ledTrigOffAt = millis() + 80;
     },
     RISING);
 
@@ -344,8 +363,9 @@ void loop() {
       paramData.modIndexM1.value = modIndex;
     }
 
-    editMode = !editMode;       // toggle mode
-    digitalWrite(5, editMode);  // LED reflects current mode
+    editMode = !editMode;  // toggle mode
+    led.setPixelColor(0, editMode ? led.Color(0, 220, 255) : led.Color(255, 140, 0));
+    led.show();
 
     // Set up pickup targets for the new mode
     if (!editMode) {
@@ -438,6 +458,12 @@ void loop() {
       modIndex = paramData.modIndexM1.value;  // Use stored value
       softClipK = modIndex;
     }
+  }
+
+  if (ledTrigOn && millis() >= ledTrigOffAt) {
+    led.setPixelColor(0, editMode ? led.Color(0, 220, 255) : led.Color(255, 140, 0));
+    led.show();
+    ledTrigOn = false;
   }
 
   delay(10);  // simple UI debounce / CPU breather
