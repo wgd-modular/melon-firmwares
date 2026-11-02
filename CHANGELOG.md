@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/wgd-modular/melon-firmwares/compare/v1.5.1...v1.5.2) (2026-11-02)
+
+
+### Bug Fixes
+
+* Add WS2812B LED support to FM Drum ([#31](https://github.com/wgd-modular/melon-firmwares/issues/31)) ([3005f96](https://github.com/wgd-modular/melon-firmwares/commit/3005f9677a748874dbf0932e2f0b89c46f33827e))
+
 ## [1.5.1](https://github.com/wgd-modular/melon-firmwares/compare/v1.5.0...v1.5.1) (2026-10-27)
 
 
