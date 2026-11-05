@@ -1,1 +1,8 @@
 */.DS_store
+.DS_Store
+
+# pixi environments
+.pixi/
+
+# Manual build output
+manual/build/

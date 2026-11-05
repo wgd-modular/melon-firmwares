@@ -28,3 +28,13 @@ jobs:
     uses: ./.github/workflows/build-firmwares.yml
     with:
       release_tag: ${{ needs.release-please.outputs.tag_name }}
+
+  manual-attach:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-manual.yml
+    with:
+      ref: ${{ needs.release-please.outputs.tag_name }}
+      release_tag: ${{ needs.release-please.outputs.tag_name }}
