@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Melon Radio</title>
+  <meta name="description" content="Put your own recording on the Melon Radio firmware: trim it, hear it the way Melon plays it and send it over USB, all in the browser.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0a09">
+  <link rel="icon" href="melon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/Montserrat-ExtraBoldItalic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/NunitoSans.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="stars" aria-hidden="true"></canvas>
+
+  <div class="page">
+    <header class="masthead">
+      <a class="brand" href="https://wgdmodular.de/" aria-label="WGD Modular">
+        <img src="melon.svg" alt="" width="34" height="34">
+        <span class="wordmark">MELON</span>
+      </a>
+      <nav>
+        <a href="https://github.com/wgd-modular/melon-firmwares/tree/main/radio">Firmware</a>
+        <a href="https://github.com/wgd-modular/melon-firmwares/releases/latest/download/melon-manual.pdf">Manual</a>
+      </nav>
+    </header>
+
+    <section class="intro">
+      <p class="kicker">Radio firmware</p>
+      <h1><span>Your own recording</span> <span>on Melon</span></h1>
+      <p class="lede">Drop in an audio file, pick the part you want and hear it the way Melon will play it. Then send it over USB. Your audio never leaves this computer.</p>
+    </section>
+
+    <section id="start" class="card dropzone" aria-labelledby="start-title">
+      <input type="file" id="file" accept="audio/*,.wav,.aif,.aiff,.mp3,.m4a,.flac,.ogg,.opus" hidden>
+      <svg class="drop-art" viewBox="0 0 120 48" aria-hidden="true">
+        <path d="M4 24h6l4-10 5 22 5-30 5 34 5-26 5 18 5-12 5 8 5-4 5 2h6l4-14 5 26 5-20 5 14 5-8 5 4h7" />
+      </svg>
+      <h2 id="start-title">Drop an audio file here</h2>
+      <p>WAV, AIFF, MP3, M4A, FLAC or OGG. Melon holds 43 seconds at full quality and up to 2½ minutes lo-fi.</p>
+      <div class="actions">
+        <button class="button primary" id="browse" type="button">Choose a file</button>
+        <button class="button" id="example" type="button">Try the example</button>
+      </div>
+      <button class="resume" id="resume" type="button" hidden>Continue with <b></b></button>
+      <p class="status" id="load-status" role="status"></p>
+    </section>
+
+    <main id="editor" class="workspace" hidden>
+      <article class="card wave-card" aria-labelledby="file-name">
+        <header class="card-head">
+          <div>
+            <p class="kicker"><span class="step">1</span>Pick the part</p>
+            <h2 id="file-name"></h2>
+            <p class="meta" id="file-meta"></p>
+          </div>
+          <button class="button ghost small" id="replace" type="button">Replace file</button>
+        </header>
+
+        <div class="wave-frame">
+          <canvas id="wave" aria-label="Waveform. Drag to select the part Melon plays."></canvas>
+        </div>
+        <canvas id="overview" aria-label="Whole recording. Drag to scroll."></canvas>
+
+        <div class="toolbar">
+          <button class="button primary small" id="play" type="button"><span class="icon play" aria-hidden="true"></span><span class="label">Play</span></button>
+          <button class="button small" id="trim" type="button">Trim silence</button>
+          <button class="button small" id="all" type="button">Select all</button>
+          <span class="spacer"></span>
+          <div class="zoom" role="group" aria-label="Zoom">
+            <button class="button small icon-only" id="zoom-out" type="button" aria-label="Zoom out">−</button>
+            <button class="button small icon-only" id="zoom-in" type="button" aria-label="Zoom in">+</button>
+            <button class="button small" id="zoom-fit" type="button">Selection</button>
+            <button class="button small" id="zoom-all" type="button">All</button>
+          </div>
+        </div>
+
+        <div class="fields">
+          <label>Start <input id="sel-start" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label>End <input id="sel-end" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label>Length <input id="sel-length" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <p class="hint">Drag across the waveform to select. Drag the edges to trim and the middle to move. Click inside the selection to play from there. Zoom with + and − or Ctrl + scroll.</p>
+      </article>
+
+      <aside class="module" aria-label="Melon preview">
+        <div class="module-face">
+          <div class="module-top"><span class="module-name">MELON</span><span class="hole" aria-hidden="true"></span></div>
+          <div class="module-rule" aria-hidden="true"></div>
+          <div class="knobs">
+            <div class="knob-slot" data-knob="speed"></div>
+            <div class="knob-slot" data-knob="direction"></div>
+            <div class="knob-slot" data-knob="position"></div>
+          </div>
+          <div class="module-lower">
+            <div class="melon-led" id="led" aria-hidden="true">
+              <span class="glow"></span>
+              <img src="melon.svg" alt="">
+            </div>
+            <button class="module-button" id="trigger" type="button" aria-label="Trigger (Space)"></button>
+            <div class="jacks">
+              <button class="jack" id="in1" type="button" aria-label="IN 1, trigger"><span class="jack-label">1</span></button>
+              <button class="jack" id="in2" type="button" aria-pressed="false" aria-label="IN 2, loop"><span class="jack-label">2</span></button>
+              <span class="jack inert" aria-hidden="true"><span class="jack-label below">CV</span></span>
+              <span class="jack out" id="out" aria-hidden="true"><span class="jack-label below">OUT</span></span>
+            </div>
+          </div>
+          <div class="module-bottom" aria-hidden="true"><span>◆</span> WGD <span>◆</span></div>
+        </div>
+        <p class="module-help">Turn the knobs and press the button, or Space, to hear it like Melon plays it. Jack 2 switches loop on and off, like a high gate at IN 2. <span id="position-step"></span></p>
+      </aside>
+
+      <article class="card sound-card" aria-labelledby="sound-title">
+        <p class="kicker" id="sound-title"><span class="step">2</span>Shape the sound</p>
+        <div class="controls">
+          <label class="switch">
+            <input type="checkbox" id="normalize" checked>
+            <span class="track" aria-hidden="true"></span>
+            <span><b>Normalize</b><small>As loud as Melon goes without distortion</small></span>
+          </label>
+          <label class="slider">
+            <span class="slider-head"><b>Gain</b><output id="gain-value">0.0 dB</output></span>
+            <input type="range" id="gain" min="-12" max="12" step="0.5" value="0">
+            <small>Above 0 dB it saturates softly. Saturated parts turn pink.</small>
+          </label>
+          <label class="slider">
+            <span class="slider-head"><b>Fade in</b><output id="fade-in-value">5 ms</output></span>
+            <input type="range" id="fade-in" min="0" max="1000" step="1">
+          </label>
+          <label class="slider">
+            <span class="slider-head"><b>Fade out</b><output id="fade-out-value">20 ms</output></span>
+            <input type="range" id="fade-out" min="0" max="1000" step="1">
+          </label>
+        </div>
+      </article>
+
+      <article class="card quality-card" aria-labelledby="quality-title">
+        <div class="card-head">
+          <p class="kicker" id="quality-title"><span class="step">3</span>Quality</p>
+          <label class="check"><input type="checkbox" id="auto" checked> Pick the best that fits</label>
+        </div>
+        <div class="qualities" id="qualities" role="radiogroup" aria-labelledby="quality-title"></div>
+        <div class="meter" id="meter">
+          <div class="meter-bar"><span id="meter-fill"></span></div>
+          <p id="meter-text"></p>
+        </div>
+      </article>
+
+      <article class="card send-card" aria-labelledby="send-title">
+        <p class="kicker" id="send-title"><span class="step">4</span>Send it to Melon</p>
+        <div class="send-actions">
+          <button class="button primary large" id="send" type="button">Send to Melon</button>
+          <button class="button large" id="download" type="button">Download .uf2</button>
+        </div>
+        <p class="send-info" id="send-info"></p>
+        <p class="note" id="send-support" hidden>Sending needs Chrome, Edge or Opera on a computer. You can still download the file and copy it over by hand.</p>
+        <details class="by-hand">
+          <summary>Copy it over by hand</summary>
+          <ol>
+            <li>Switch off your Eurorack case. Melon must not get power from the case and from USB at the same time.</li>
+            <li>Hold the small <b>B</b> button on the XIAO and connect it to your computer by USB.</li>
+            <li>A drive called <b>RP2350</b> appears. Drag the downloaded .uf2 onto it.</li>
+            <li>Melon restarts by itself when the copy is done.</li>
+          </ol>
+        </details>
+      </article>
+    </main>
+
+    <footer class="footer">
+      <p id="firmware-version"></p>
+      <p>Radio is based on HAGIWO's MOD2 Radio Sampler. This tool runs entirely in your browser.</p>
+    </footer>
+  </div>
+
+  <dialog id="flash" aria-labelledby="flash-title">
+    <form method="dialog" class="flash-close"><button class="button ghost small icon-only" aria-label="Close">×</button></form>
+    <ol class="flash-steps" aria-hidden="true"><li data-for="power"></li><li data-for="restart"></li><li data-for="drive"></li><li data-for="write"></li></ol>
+
+    <section data-step="power">
+      <h2 id="flash-title">Switch off your case first</h2>
+      <p>Melon must not get power from your Eurorack case while it is connected by USB. Switch the case off, then connect Melon to this computer with a USB-C cable.</p>
+      <div class="flash-actions">
+        <button class="button primary" data-go="restart" type="button">Melon is connected</button>
+      </div>
+      <button class="link" data-go="drive" type="button">Melon already shows up as a drive called RP2350</button>
+    </section>
+
+    <section data-step="restart" hidden>
+      <h2>Restart Melon for the update</h2>
+      <p>Your browser asks which device to use. Pick the one called <b>XIAO RP2350</b>.</p>
+      <div class="flash-actions">
+        <button class="button primary" id="restart" type="button">Restart Melon</button>
+      </div>
+      <p class="flash-status" id="restart-status" role="status"></p>
+      <details class="flash-help">
+        <summary>Melon is not in the list</summary>
+        <p>Unplug the USB cable, hold the small <b>B</b> button on the XIAO and plug it back in. A drive called RP2350 appears.</p>
+        <button class="button small" data-go="drive" type="button">Continue</button>
+      </details>
+    </section>
+
+    <section data-step="drive" hidden>
+      <h2>Choose the RP2350 drive</h2>
+      <p id="drive-text">A drive called <b>RP2350</b> has appeared. Choose it in the next window, then let the site save to it.</p>
+      <div class="flash-actions">
+        <button class="button primary" id="pick" type="button">Choose RP2350</button>
+      </div>
+      <button class="link" id="pick-other" type="button" hidden>Choose a different drive</button>
+      <p class="flash-status error" id="drive-status" role="alert"></p>
+    </section>
+
+    <section data-step="write" hidden>
+      <h2>Sending your recording</h2>
+      <p>Keep Melon connected. This takes a few seconds.</p>
+      <div class="progress"><span id="write-progress"></span></div>
+      <p class="flash-status" id="write-status" role="status"></p>
+    </section>
+
+    <section data-step="done" hidden>
+      <div class="done-mark" aria-hidden="true"></div>
+      <h2>Done</h2>
+      <p id="done-text">Melon restarted with your recording. Unplug the USB cable, switch your case back on and press the button.</p>
+      <p class="note">If your computer says the drive was not ejected properly, you can ignore it. Melon disconnects itself after the update.</p>
+      <div class="flash-actions">
+        <button class="button primary" data-close type="button">Close</button>
+      </div>
+    </section>
+
+    <section data-step="error" hidden>
+      <h2>That did not work</h2>
+      <p id="error-text"></p>
+      <div class="flash-actions">
+        <button class="button primary" data-go="power" type="button">Try again</button>
+        <button class="button" data-download type="button">Download .uf2 instead</button>
+      </div>
+    </section>
+  </dialog>
+
+  <div class="drop-overlay" id="drop-overlay" hidden><p>Drop to load</p></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
