@@ -1,0 +1,18 @@
+[workspace]
+name = "melon-firmwares"
+description = "Firmwares for the melon Eurorack module"
+authors = ["Felix Wiegand <fxwiegand@googlemail.com>"]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64"]
+
+[feature.manual.dependencies]
+typst = ">=0.15,<0.16"
+python = ">=3.12"
+git = "*"
+
+[feature.manual.tasks.manual]
+description = "Build the PDF manual from the firmware READMEs"
+cmd = "python manual/build.py"
+
+[environments]
+manual = { features = ["manual"], no-default-feature = true }
