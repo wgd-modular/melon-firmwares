@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/wgd-modular/melon-firmwares/compare/v1.6.0...v1.6.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* Fix the Radio tool's layout and control alignment in Safari ([#36](https://github.com/wgd-modular/melon-firmwares/issues/36)) ([6fac28a](https://github.com/wgd-modular/melon-firmwares/commit/6fac28afd79f3eed83a8815e9bd80d179a798c26))
+
 ## [1.6.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.5.2...v1.6.0) (2026-11-06)
 
 
