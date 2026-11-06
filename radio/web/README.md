@@ -11,8 +11,8 @@ whenever `radio/` changes on main.
   `../postbuild.py` does.
 - `player.js` plays it back the way `radio.ino` does.
 - `panel.svg` is the Melon front panel, converted from its KiCad file. The
-  page lays the controls over it at the panel's hole positions in mm, and
-  `knob.js` draws the knob caps.
+  page loads it into the SVG that draws the knob caps, button, sockets and LED
+  at the panel's hole positions in mm, so they all share one coordinate system.
 - `flash.js` restarts Melon into its bootloader with a 1200 baud touch over Web
   Serial and writes the UF2 onto the RP2350 drive with the File System Access
   API.

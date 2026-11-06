@@ -795,6 +795,18 @@ async function ensureRendered() {
 
 const player = new Player(playerChanged);
 const rack = $('#rack');
+
+// The panel art goes into the same SVG as the caps, sockets and LED drawn over
+// it, so they share one coordinate system and line up in every browser.
+const face = $('.panel-face');
+fetch('panel.svg')
+  .then(response => response.text())
+  .then(text => {
+    const art = new DOMParser().parseFromString(text, 'image/svg+xml').documentElement;
+    $('.panel-art').append(...[...art.children].map(node => document.importNode(node, true)));
+  })
+  .finally(() => face.classList.add('ready'));
+
 let flashUntil = 0;
 
 const positionPercent = () => Math.floor(state.knobs.position * 100);
@@ -802,17 +814,17 @@ const reversed = () => state.knobs.direction >= 0.5;
 
 const knobs = {
   speed: new Knob($('[data-knob="speed"]'), {
-    label: 'Speed', value: state.knobs.speed, defaultValue: 0.5, readout: $('#speed-value'),
+    cap: $('[data-cap="speed"]'), label: 'Speed', value: state.knobs.speed, defaultValue: 0.5, readout: $('#speed-value'),
     format: v => `${(0.5 + v).toFixed(2)}×`,
     onInput: v => { state.knobs.speed = v; player.setSpeed(0.5 + v); saveSession(); },
   }),
   direction: new Knob($('[data-knob="direction"]'), {
-    label: 'Direction', value: state.knobs.direction, defaultValue: 0, readout: $('#direction-value'),
+    cap: $('[data-cap="direction"]'), label: 'Direction', value: state.knobs.direction, defaultValue: 0, readout: $('#direction-value'),
     format: v => v >= 0.5 ? 'Reverse' : 'Forward',
     onInput: v => { state.knobs.direction = v; player.setReversed(v >= 0.5); updateLed(); saveSession(); },
   }),
   position: new Knob($('[data-knob="position"]'), {
-    label: 'Position', value: state.knobs.position, defaultValue: 0, readout: $('#position-value'),
+    cap: $('[data-cap="position"]'), label: 'Position', value: state.knobs.position, defaultValue: 0, readout: $('#position-value'),
     format: v => `${Math.floor(v * 100)} %`,
     onInput: v => { state.knobs.position = v; updatePosition(); redraw({ layer: false }); saveSession(); },
   }),
@@ -986,7 +998,7 @@ function pickFile() {
 function loadingInteractions() {
   $('#browse').addEventListener('click', pickFile);
   $('#replace').addEventListener('click', pickFile);
-  $('#example').addEventListener('click', () => loadExample());
+  $('#example').addEventListener('click', () => loadExample(exampleSession));
   $('#file').addEventListener('change', event => {
     const file = event.target.files[0];
     if (file) loadAudio(file, file.name);
@@ -1040,16 +1052,22 @@ function saveSession() {
   }), 400);
 }
 
+// The example button picks up where the example was left, so only an own
+// file needs a button of its own to continue with.
+let exampleSession = null;
+
 async function offerResume() {
   const file = await load('file');
   if (!file) return;
+  if (file.example) {
+    exampleSession = await load('session');
+    return;
+  }
   const button = $('#resume');
-  button.querySelector('b').textContent = file.example ? 'the example' : file.name;
+  button.querySelector('b').textContent = file.name;
   button.hidden = false;
   button.addEventListener('click', async () => {
-    const session = await load('session');
-    if (file.example) loadExample(session);
-    else loadAudio(file.blob, file.name, { restore: session });
+    loadAudio(file.blob, file.name, { restore: await load('session') });
   });
 }
 
