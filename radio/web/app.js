@@ -49,11 +49,13 @@ function random(seed) {
   };
 }
 
-function sparkle(ctx, x, y, r) {
+// The two star shapes printed on the panel: five points with the inner
+// radius at 0.553 of the outer, and four-pointed sparkles at 0.382.
+function star(ctx, x, y, r, points, inner, angle) {
   ctx.beginPath();
-  for (let i = 0; i < 8; i++) {
-    const a = i * Math.PI / 4;
-    const d = i % 2 ? r * 0.32 : r;
+  for (let i = 0; i < points * 2; i++) {
+    const a = angle + i * Math.PI / points;
+    const d = i % 2 ? r * inner : r;
     ctx.lineTo(x + d * Math.sin(a), y - d * Math.cos(a));
   }
   ctx.closePath();
@@ -68,36 +70,18 @@ function drawStars() {
   canvas.height = h * dpr;
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
-  const rand = random(77);
-  for (let i = 0; i < w * h / 4200; i++) {
-    ctx.globalAlpha = 0.15 + rand() * 0.45;
-    ctx.fillStyle = rand() < 0.3 ? COLOURS.melon : '#fffdf0';
-    ctx.beginPath();
-    ctx.arc(rand() * w, rand() * h, 0.4 + rand() * 0.9, 0, Math.PI * 2);
-    ctx.fill();
-  }
   ctx.fillStyle = COLOURS.melon;
-  for (let i = 0; i < w * h / 60000; i++) {
-    ctx.globalAlpha = 0.25 + rand() * 0.35;
-    sparkle(ctx, rand() * w, rand() * h, 3 + rand() * 4);
+  const rand = random(77);
+  const placed = [];
+  const count = Math.round(w * h / 13000);
+  for (let tries = 0; placed.length < count && tries < count * 30; tries++) {
+    const x = rand() * w, y = rand() * h;
+    if (placed.some(([px, py]) => (x - px) ** 2 + (y - py) ** 2 < 34 ** 2)) continue;
+    placed.push([x, y]);
+    ctx.globalAlpha = 0.25 + rand() * 0.5;
+    if (rand() < 0.72) star(ctx, x, y, 1.7 + rand() * 2.5, 5, 0.553, rand() * Math.PI * 0.4);
+    else star(ctx, x, y, 2.2 + rand() * 2, 4, 0.382, (rand() - 0.5) * Math.PI / 6);
   }
-}
-
-function moduleStars() {
-  const face = $('.module-face');
-  const { width, height } = face.getBoundingClientRect();
-  if (!width) return;
-  const rand = random(12);
-  let shapes = '';
-  for (let i = 0; i < 18; i++) {
-    const x = rand() * width, y = rand() * height, r = 2.5 + rand() * 3;
-    const points = Array.from({ length: 8 }, (_, k) => {
-      const a = k * Math.PI / 4, d = k % 2 ? r * 0.32 : r;
-      return `${(x + d * Math.sin(a)).toFixed(1)},${(y - d * Math.cos(a)).toFixed(1)}`;
-    }).join(' ');
-    shapes += `<polygon points="${points}" fill="%23cec74c" opacity="${(0.55 + rand() * 0.4).toFixed(2)}"/>`;
-  }
-  face.style.setProperty('--module-stars', `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width.toFixed(0)} ${height.toFixed(0)}">${shapes}</svg>')`);
 }
 
 // ── Formatting ───────────────────────────────────────────────────────────────
@@ -360,7 +344,7 @@ function drawWaveLayer() {
 }
 
 function drawWave() {
-  if (!state.source) return;
+  if (!state.source || !wave.w || !wave.h) return;
   const ctx = wave.canvas.getContext('2d');
   const { dpr, w, h } = wave;
   const { top, bottom } = waveGeometry();
@@ -436,7 +420,7 @@ function drawOverviewLayer() {
 }
 
 function drawOverview() {
-  if (!state.source) return;
+  if (!state.source || !overview.w || !overview.h) return;
   const ctx = overview.canvas.getContext('2d');
   const { w, h, dpr } = overview;
   ctx.drawImage(overview.layer, 0, 0);
@@ -726,6 +710,7 @@ function updateQualities() {
     ? `${(seconds - cap).toFixed(1)} s too long for ${q.name}. Shorten the selection${q === QUALITIES[QUALITIES.length - 1] ? '' : ' or pick a longer quality'}.`
     : `${seconds.toFixed(1)} s of ${cap.toFixed(1)} s · ${Math.round(seconds / cap * 100)} % of Melon's memory`;
   const step = seconds / 100;
+  updatePosition();
   $('#position-step').textContent = `POSITION has 101 start points, ${step < 1 ? `${Math.round(step * 1000)} ms` : `${step.toFixed(2)} s`} apart.`;
 }
 
@@ -809,7 +794,7 @@ async function ensureRendered() {
 // ── Module preview ───────────────────────────────────────────────────────────
 
 const player = new Player(playerChanged);
-const led = $('#led');
+const rack = $('#rack');
 let flashUntil = 0;
 
 const positionPercent = () => Math.floor(state.knobs.position * 100);
@@ -817,36 +802,43 @@ const reversed = () => state.knobs.direction >= 0.5;
 
 const knobs = {
   speed: new Knob($('[data-knob="speed"]'), {
-    label: 'SPEED', value: state.knobs.speed, defaultValue: 0.5, origin: 0.5,
+    label: 'Speed', value: state.knobs.speed, defaultValue: 0.5, readout: $('#speed-value'),
     format: v => `${(0.5 + v).toFixed(2)}×`,
     onInput: v => { state.knobs.speed = v; player.setSpeed(0.5 + v); saveSession(); },
   }),
   direction: new Knob($('[data-knob="direction"]'), {
-    label: 'DIRECTION', value: state.knobs.direction, defaultValue: 0,
+    label: 'Direction', value: state.knobs.direction, defaultValue: 0, readout: $('#direction-value'),
     format: v => v >= 0.5 ? 'Reverse' : 'Forward',
     onInput: v => { state.knobs.direction = v; player.setReversed(v >= 0.5); updateLed(); saveSession(); },
   }),
   position: new Knob($('[data-knob="position"]'), {
-    label: 'POSITION', value: state.knobs.position, defaultValue: 0,
+    label: 'Position', value: state.knobs.position, defaultValue: 0, readout: $('#position-value'),
     format: v => `${Math.floor(v * 100)} %`,
-    onInput: v => { state.knobs.position = v; redraw({ layer: false }); saveSession(); },
+    onInput: v => { state.knobs.position = v; updatePosition(); redraw({ layer: false }); saveSession(); },
   }),
 };
+
+function updatePosition() {
+  const seconds = selSeconds() * positionPercent() / 100;
+  $('#position-time').textContent = `starts ${formatTime(seconds, 2)}${seconds < 60 ? ' s' : ''} in`;
+}
 
 function updateLed() {
   let colour = LED.none;
   if (state.source) colour = performance.now() < flashUntil ? LED.flash : reversed() ? LED.reverse : LED.forward;
-  led.style.setProperty('--led', colour);
-  led.classList.toggle('idle', !state.source);
-  knobs.direction.setColour(state.source ? (reversed() ? LED.reverse : LED.forward) : 'var(--melon)');
+  rack.style.setProperty('--led', colour);
+  rack.classList.toggle('idle', !state.source);
+  $('#led-value').textContent = !state.source ? 'Red, pulsing' : reversed() ? 'Orange' : 'Green';
 }
 
-async function trigger() {
+async function trigger(press = false) {
   if (!state.source) return;
   player.ensureContext();
-  const button = $('#trigger');
-  button.classList.add('pressed');
-  setTimeout(() => button.classList.remove('pressed'), 120);
+  if (press) {
+    const button = $('#trigger');
+    button.classList.add('pressed');
+    setTimeout(() => button.classList.remove('pressed'), 120);
+  }
   flashUntil = performance.now() + 80;
   updateLed();
   setTimeout(updateLed, 90);
@@ -858,15 +850,13 @@ let animating = false;
 function animate() {
   if (!player.playing) {
     animating = false;
-    $('#out').classList.remove('live');
+    rack.style.setProperty('--level', '0');
     redraw({ layer: false });
     return;
   }
   animating = true;
   drawWave();
-  const out = $('#out');
-  out.classList.add('live');
-  out.style.setProperty('--level', player.level().toFixed(2));
+  rack.style.setProperty('--level', player.level().toFixed(2));
   requestAnimationFrame(animate);
 }
 
@@ -877,13 +867,19 @@ function playerChanged() {
   if (player.playing && !animating) animate();
 }
 
+function setLoop(on) {
+  state.loop = on;
+  $('#in2').setAttribute('aria-pressed', String(on));
+  $('#loop-value').textContent = on ? 'Loop on' : 'Loop off';
+  rack.classList.toggle('loop', on);
+  player.setLoop(on);
+}
+
 function moduleInteractions() {
-  $('#trigger').addEventListener('click', trigger);
-  $('#in1').addEventListener('click', trigger);
+  $('#trigger').addEventListener('click', () => trigger(true));
+  $('#in1').addEventListener('click', () => trigger());
   $('#in2').addEventListener('click', () => {
-    state.loop = !state.loop;
-    $('#in2').setAttribute('aria-pressed', String(state.loop));
-    player.setLoop(state.loop);
+    setLoop(!state.loop);
     saveSession();
   });
   $('#play').addEventListener('click', () => {
@@ -896,7 +892,7 @@ function moduleInteractions() {
     const typing = target.closest('input, textarea, select, button, summary, a, dialog');
     if (event.code === 'Space' && !typing) {
       event.preventDefault();
-      trigger();
+      trigger(true);
     } else if (event.key === 'Escape' && !$('#flash').open) {
       player.stop();
     }
@@ -940,20 +936,17 @@ async function loadAudio(blob, name, { example = false, restore = null } = {}) {
   $('#file-meta').textContent = `${formatTime(seconds, 1)}${seconds < 60 ? ' s' : ''} · ${channels === 1 ? 'mono' : channels === 2 ? 'stereo, mixed to mono' : `${channels} channels, mixed to mono`}`;
   $('#start').hidden = true;
   $('#editor').hidden = false;
-  moduleStars();
 
   const longest = capacity(QUALITIES[QUALITIES.length - 1]);
   if (restore) {
     state.settings = { ...state.settings, ...restore.settings };
     state.auto = restore.auto ?? true;
     state.qualityId = QUALITIES.some(q => q.id === restore.qualityId) ? restore.qualityId : 'best';
-    state.loop = Boolean(restore.loop);
     Object.assign(state.knobs, restore.knobs);
     for (const [key, knob] of Object.entries(knobs)) knob.set(state.knobs[key], false);
     player.setSpeed(0.5 + state.knobs.speed);
     player.setReversed(reversed());
-    player.setLoop(state.loop);
-    $('#in2').setAttribute('aria-pressed', String(state.loop));
+    setLoop(Boolean(restore.loop));
     setSelection(restore.start * SOURCE_RATE, restore.end * SOURCE_RATE);
   } else if (seconds <= longest) {
     setSelection(0, samples.length);
@@ -1292,7 +1285,6 @@ function start() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       drawStars();
-      moduleStars();
       redraw({ overviewLayer: true });
     }, 120);
   });

@@ -9,8 +9,10 @@ whenever `radio/` changes on main.
   packed 10-bit or µ-law.
 - `uf2.js` adds the recording to the compiled firmware, the same way
   `../postbuild.py` does.
-- `player.js` plays it back the way `radio.ino` does, `knob.js` draws the
-  panel's knobs.
+- `player.js` plays it back the way `radio.ino` does.
+- `panel.svg` is the Melon front panel, converted from its KiCad file. The
+  page lays the controls over it at the panel's hole positions in mm, and
+  `knob.js` draws the knob caps.
 - `flash.js` restarts Melon into its bootloader with a 1200 baud touch over Web
   Serial and writes the UF2 onto the RP2350 drive with the File System Access
   API.
