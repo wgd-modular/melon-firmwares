@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.5.2...v1.6.0) (2026-11-06)
+
+
+### Features
+
+* Add a PDF manual built from the firmware READMEs ([#33](https://github.com/wgd-modular/melon-firmwares/issues/33)) ([defe3c3](https://github.com/wgd-modular/melon-firmwares/commit/defe3c3b17b555b1284347d7511053836c7aa33e))
+* Add a web tool to put your own recording on Radio ([#34](https://github.com/wgd-modular/melon-firmwares/issues/34)) ([f17bfc7](https://github.com/wgd-modular/melon-firmwares/commit/f17bfc7fc0bba36e8e628838602b42beab3f3590))
+
 ## [1.5.2](https://github.com/wgd-modular/melon-firmwares/compare/v1.5.1...v1.5.2) (2026-11-02)
 
 
