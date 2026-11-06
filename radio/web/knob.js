@@ -1,10 +1,10 @@
 // A panel knob: drag up/down (or sideways), scroll, or use the arrow keys.
 // Double-click returns it to its default. The rings and ticks are printed on
-// the panel, so this only draws the cap. Sizes are in mm, like the panel.
+// the panel, so this only draws the cap, into a group of the panel's SVG that
+// sits on the knob's hole. Sizes are in mm, like the panel.
 
 const SVG = 'http://www.w3.org/2000/svg';
 const SWEEP = 150;
-const AREA = 7.95;
 const CAP = 3.757;
 
 function element(name, attributes, parent) {
@@ -15,7 +15,7 @@ function element(name, attributes, parent) {
 }
 
 export class Knob {
-  constructor(node, { label, value, defaultValue = value, format, readout, onInput }) {
+  constructor(node, { cap, label, value, defaultValue = value, format, readout, onInput }) {
     this.node = node;
     this.value = value;
     this.defaultValue = defaultValue;
@@ -29,8 +29,7 @@ export class Knob {
     node.setAttribute('aria-valuemin', '0');
     node.setAttribute('aria-valuemax', '100');
 
-    const svg = element('svg', { viewBox: `${-AREA} ${-AREA} ${AREA * 2} ${AREA * 2}`, 'aria-hidden': 'true' }, node);
-    this.cap = element('g', {}, svg);
+    this.cap = element('g', {}, cap);
     element('circle', { r: CAP, fill: '#fff' }, this.cap);
     element('circle', { r: CAP - 0.55, fill: 'none', stroke: '#e2e2e2', 'stroke-width': 0.18 }, this.cap);
     element('line', { x1: 0, y1: -1.05, x2: 0, y2: -3.05, stroke: '#000', 'stroke-width': 0.62, 'stroke-linecap': 'round' }, this.cap);

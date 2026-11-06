@@ -612,15 +612,21 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 16px 36px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.07);
 }
 
-.panel-face, .panel-overlay {
+/* The panel art, knob caps, sockets and LED are all drawn in one SVG so they
+   share its coordinate system. The controls on top only take the input. */
+.panel-face {
   position: absolute;
   inset: 0;
   display: block;
   width: 100%;
   height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
-.panel-overlay { pointer-events: none; overflow: visible; }
+.panel-face.ready { opacity: 1; }
 
 .panel .knob, .panel-button, .panel-jack {
   position: absolute;
@@ -631,6 +637,7 @@ input[type="range"]::-moz-range-thumb {
   border: 0;
   border-radius: 50%;
   background: none;
+  outline: none;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -641,24 +648,11 @@ input[type="range"]::-moz-range-thumb {
   cursor: ns-resize;
 }
 
-.knob svg { display: block; width: 100%; height: 100%; }
-
 .panel-button {
   width: calc(var(--mm) * 6.4);
   height: calc(var(--mm) * 6.4);
   cursor: pointer;
 }
-
-.panel-button::before {
-  content: "";
-  position: absolute;
-  inset: calc(var(--mm) * 1.45);
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 0.06s, background 0.06s;
-}
-
-.panel-button:active::before, .panel-button.pressed::before { transform: scale(0.8); background: #c9c9c9; }
 
 .panel-jack {
   width: calc(var(--mm) * 8.6);
@@ -666,12 +660,34 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
 }
 
-.panel-button:hover, .panel-jack:hover { box-shadow: 0 0 0 1.5px rgb(206 199 76 / 0.75); }
-
-.panel .knob:focus-visible, .panel-button:focus-visible, .panel-jack:focus-visible {
-  outline: 2px solid var(--melon);
-  outline-offset: 1px;
+.button-cap {
+  fill: #fff;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.06s, fill 0.06s;
 }
+
+#trigger:active ~ .panel-face .button-cap,
+#trigger.pressed ~ .panel-face .button-cap { transform: scale(0.8); fill: #c9c9c9; }
+
+.rings circle {
+  fill: none;
+  stroke: var(--melon);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+}
+
+#trigger:hover ~ .panel-face .ring-trigger,
+#in1:hover ~ .panel-face .ring-in1,
+#in2:hover ~ .panel-face .ring-in2 { opacity: 0.75; stroke-width: 1.5; }
+
+[data-knob="speed"]:focus-visible ~ .panel-face .ring-speed,
+[data-knob="direction"]:focus-visible ~ .panel-face .ring-direction,
+[data-knob="position"]:focus-visible ~ .panel-face .ring-position,
+#trigger:focus-visible ~ .panel-face .ring-trigger,
+#in1:focus-visible ~ .panel-face .ring-in1,
+#in2:focus-visible ~ .panel-face .ring-in2 { opacity: 1; stroke-width: 2; }
 
 #led-light stop { stop-color: var(--led); }
 .led-bloom { fill: var(--led); opacity: 0.6; }
