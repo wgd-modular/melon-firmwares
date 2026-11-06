@@ -1,4 +1,4 @@
-# Braids (MOD2)
+# Braids
 
 A port of the Mutable Instruments **Braids** macro-oscillator to the melon
 MOD2 (RP2350). It renders 47 synthesis models through three pots, a button and

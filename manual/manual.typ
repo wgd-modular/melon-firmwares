@@ -437,6 +437,7 @@ five volts, enough for five octaves where a firmware tracks 1 V/oct.
   #link(build.page)[bill of materials#if build.revision != none [
   for #build.revision]] on wgdmodular.de.
 
+  #pagebreak(weak: true)
   == Step by step
 
   #for (number, step) in guide.steps.enumerate(start: 1) {
