@@ -1,13 +1,17 @@
 /*
 HAGIWO MOD2 Radio Sampler Ver1.0
 
-  • Single long-form audio file (up to ~130 seconds at 36.6kHz)
+  • Single long-form recording, up to ~43 s at full quality or ~160 s lo-fi
   • Optimized for vocal/speech/podcast sampling for techno production
   • Variable playback speed with pitch shifting (0.5× to 1.5×)
   • Start position control for selecting different sections
   • Forward/Reverse playback direction switching
   • PWM audio output at ~36.6 kHz using 10-bit resolution
   • Linear interpolation for smooth pitch-shifting
+
+  The recording is not part of the code. It sits in its own flash region
+  (see SAMPLE_ADDR) and is put there by the web tool or by postbuild.py:
+  https://wgd-modular.github.io/melon-firmwares/radio/
 
   --Pin assign---
 POT1     A0       Playback speed control (0.5×–1.5×)
@@ -18,7 +22,8 @@ IN2      GPIO0    Loop mode toggle (LOW = one-shot, HIGH = loop)
 CV       A2       Shared with POT3 for CV control of position
 BUTTON   GPIO6    Manual trigger (active-low, pull-up)
 OUT      GPIO1    10-bit PWM audio output (~36.6 kHz)
-LED      GPIO5    WS2812B — green = forward, orange = reverse, white flash on trigger (80 ms)
+LED      GPIO5    WS2812B — green = forward, orange = reverse, white flash on trigger (80 ms),
+                  slow red pulse = no recording in flash
 EEPROM   N/A
 
 CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
@@ -31,7 +36,7 @@ Although the code has been tested, it may still exhibit unstable behavior or con
 #include <Arduino.h>
 #include "hardware/pwm.h"
 #include "hardware/irq.h"
-#include "sample.h"
+#include "hardware/clocks.h"
 
 // ── WS2812B ───────────────────────────────────────────────────────────────────
 #include <Adafruit_NeoPixel.h>
@@ -43,7 +48,34 @@ bool     ledTrigOn    = false;
 uint32_t ledTrigOffAt = 0;
 // ──────────────────────────────────────────────────────────────────────────────
 
-#define FRAC_BITS    12
+// ── Recording in flash ────────────────────────────────────────────────────────
+// A 256-byte header followed by the sample data. The region ends where the
+// EEPROM emulation starts. Keep these in sync with postbuild.py and web/uf2.js.
+#define SAMPLE_ADDR   (XIP_BASE + 0x020000)
+#define SAMPLE_END    (XIP_BASE + 0x1FE000)
+#define SAMPLE_MAGIC  0x4F494452UL  // "RDIO"
+#define HEADER_SIZE   256
+
+enum : uint8_t { FORMAT_PCM10 = 1, FORMAT_ULAW = 2 };
+
+struct SampleHeader {
+  uint32_t magic;
+  uint16_t version;
+  uint8_t  format;
+  uint8_t  reserved;
+  uint32_t rate;
+  uint32_t length;
+  char     name[48];
+};
+
+const uint8_t* sampleData   = nullptr;
+uint32_t       sampleLength = 0;
+uint8_t        sampleFormat = 0;
+float          rateScale    = 1.0f;
+int16_t        ulawTable[256];
+// ──────────────────────────────────────────────────────────────────────────────
+
+#define FRAC_BITS    10
 #define FRAC_MASK    ((1UL << FRAC_BITS) - 1)
 
 const uint16_t PWM_FS   = 1023;
@@ -60,12 +92,40 @@ volatile uint32_t endPos16     = 0;
 
 uint sliceAudio, sliceIRQ;
 
-inline int16_t readPCM(const volatile uint8_t* base, uint32_t idx) {
-  uint32_t byteIndex = idx << 1;
-  return int16_t(base[byteIndex] | (base[byteIndex + 1] << 8));
+inline int16_t sampleAt(uint32_t idx) {
+  if (sampleFormat == FORMAT_ULAW) return ulawTable[sampleData[idx]];
+  // 10-bit samples packed back to back, least significant bits first
+  uint32_t bit = idx * 10;
+  const uint8_t* p = sampleData + (bit >> 3);
+  uint32_t v = ((p[0] | (p[1] << 8)) >> (bit & 7)) & 0x3FF;
+  return int16_t((v << 6) - 32768);
 }
 
-// PWM ISR — audio only, untouched
+bool loadSample() {
+  const SampleHeader* h = (const SampleHeader*)SAMPLE_ADDR;
+  if (h->magic != SAMPLE_MAGIC || h->version != 1) return false;
+  if (h->rate < 1000 || h->rate > 96000 || h->length < 2) return false;
+
+  uint32_t bytes;
+  if (h->format == FORMAT_PCM10)     bytes = (h->length * 10 + 7) / 8;
+  else if (h->format == FORMAT_ULAW) bytes = h->length;
+  else return false;
+  if (h->length > SAMPLE_END - SAMPLE_ADDR || bytes > SAMPLE_END - SAMPLE_ADDR - HEADER_SIZE) return false;
+
+  for (int i = 0; i < 256; i++) {
+    uint8_t u = ~i;
+    int t = (((u & 0x0F) << 3) + 0x84) << ((u & 0x70) >> 4);
+    ulawTable[i] = (u & 0x80) ? (0x84 - t) : (t - 0x84);
+  }
+
+  sampleData   = (const uint8_t*)(SAMPLE_ADDR + HEADER_SIZE);
+  sampleLength = h->length;
+  sampleFormat = h->format;
+  rateScale    = float(h->rate) * (PWM_WRAP + 1) / float(clock_get_hz(clk_sys));
+  return true;
+}
+
+// PWM ISR — audio only
 void on_pwm_wrap() {
   pwm_clear_irq(sliceIRQ);
 
@@ -89,7 +149,7 @@ void on_pwm_wrap() {
       }
     }
   } else {
-    if (idx <= startPos16 || idx >= SAMPLE_LENGTH) {
+    if (idx <= startPos16 || idx >= sampleLength) {
       if (loopMode) {
         tblAcc = (endPos16 - 1) << FRAC_BITS;
       } else {
@@ -104,15 +164,15 @@ void on_pwm_wrap() {
   idx  = tblAcc >> FRAC_BITS;
   frac = tblAcc & FRAC_MASK;
 
-  int16_t s1 = readPCM(vocalSample, idx);
+  int16_t s1 = sampleAt(idx);
   int16_t s2;
   if (!isReverse) {
-    s2 = (idx + 1 < endPos16)   ? readPCM(vocalSample, idx + 1) : 0;
+    s2 = (idx + 1 < endPos16)   ? sampleAt(idx + 1) : 0;
   } else {
-    s2 = (idx > startPos16)     ? readPCM(vocalSample, idx - 1) : 0;
+    s2 = (idx > startPos16)     ? sampleAt(idx - 1) : 0;
   }
 
-  int32_t mix          = ((int32_t)s1 * ((1UL<<FRAC_BITS) - frac) + (int32_t)s2 * frac) >> FRAC_BITS;
+  int32_t mix          = ((int32_t)s1 * (int32_t)((1UL<<FRAC_BITS) - frac) + (int32_t)s2 * (int32_t)frac) >> FRAC_BITS;
   int16_t interpolated = int16_t(mix);
   uint16_t pwmVal      = uint16_t(int32_t(interpolated) + 32768) >> 6;
   pwm_set_chan_level(sliceAudio, PWM_CHAN_B, pwmVal);
@@ -134,12 +194,14 @@ void on_pwm_wrap() {
 }
 
 void onTrigger() {
+  if (sampleLength == 0) return;
+
   playing = false;
 
   uint16_t posVal       = 1023 - analogRead(A2);
   uint32_t startPercent = (uint32_t)posVal * 100UL / 1023UL;
-  startPos16            = (SAMPLE_LENGTH * startPercent) / 100UL;
-  endPos16              = SAMPLE_LENGTH;
+  startPos16            = (sampleLength * startPercent) / 100UL;
+  endPos16              = sampleLength;
 
   if (!isReverse) {
     tblAcc = startPos16 << FRAC_BITS;
@@ -162,10 +224,12 @@ void setup() {
 
   pinMode(0, INPUT);
 
+  bool hasSample = loadSample();
+
   // ── WS2812B init (replaces pinMode(5,OUTPUT) + digitalWrite(5,LOW)) ───────
   led.begin();
   led.setBrightness(180);
-  led.setPixelColor(0, led.Color(0, 255, 80));  // boot: green (forward default)
+  led.setPixelColor(0, hasSample ? led.Color(0, 255, 80) : led.Color(0, 0, 0));  // boot: green (forward default)
   led.show();
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -188,9 +252,19 @@ void setup() {
 }
 
 void loop() {
+  if (sampleLength == 0) {
+    // No recording in flash: pulse red slowly
+    uint32_t phase = (millis() / 8) % 512;
+    uint8_t level  = phase < 256 ? phase : 511 - phase;
+    led.setPixelColor(0, led.Color(level, 0, 0));
+    led.show();
+    delay(20);
+    return;
+  }
+
   uint16_t raw = analogRead(A0);
   float rate   = 0.5f + (raw / 1023.0f);
-  tblStepFP    = uint32_t(rate * float(1 << FRAC_BITS));
+  tblStepFP    = uint32_t(rate * rateScale * float(1 << FRAC_BITS));
 
   uint16_t dirVal = analogRead(A1);
   bool newReverse = (dirVal >= 512);

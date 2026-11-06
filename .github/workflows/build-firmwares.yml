@@ -89,6 +89,10 @@ jobs:
         if: steps.compile.outcome == 'success'
         run: mv "output/${{ matrix.firmware }}.ino.uf2" "output/${{ matrix.firmware }}.uf2"
 
+      - name: Post-process
+        if: steps.compile.outcome == 'success' && hashFiles(format('{0}/postbuild.py', matrix.firmware)) != ''
+        run: python3 "${{ matrix.firmware }}/postbuild.py" "output/${{ matrix.firmware }}.uf2"
+
       - name: Upload artifact
         if: steps.compile.outcome == 'success'
         uses: actions/upload-artifact@v4

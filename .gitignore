@@ -6,3 +6,8 @@
 
 # Manual build output
 manual/build/
+
+# Local preview of the radio tool
+radio/web/radio.uf2
+radio/web/example.wav
+build/

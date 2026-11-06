@@ -1,0 +1,64 @@
+name: Radio Tool
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - radio/**
+      - .github/workflows/radio-tool.yml
+      - .release-please-manifest.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install RP2350 core and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls \
+            https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+          arduino-cli core update-index
+          arduino-cli core install rp2040:rp2040
+          arduino-cli lib install "Adafruit NeoPixel"
+
+      - name: Compile radio
+        run: arduino-cli compile --fqbn rp2040:rp2040:seeed_xiao_rp2350 --output-dir output radio/
+
+      - name: Assemble site
+        run: |
+          site=_site/radio
+          mkdir -p "$site"
+          cp -r radio/web/. "$site/"
+          cp output/radio.ino.uf2 "$site/radio.uf2"
+          cp radio/sample.wav "$site/example.wav"
+          jq -n --arg version "$(jq -r '."."' .release-please-manifest.json)" --arg commit "$GITHUB_SHA" \
+            '{version: $version, commit: $commit}' > "$site/version.json"
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=radio/"><title>Melon</title><a href="radio/">Melon Radio</a>' > _site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}radio/
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
