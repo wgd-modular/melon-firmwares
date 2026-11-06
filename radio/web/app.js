@@ -986,7 +986,7 @@ function pickFile() {
 function loadingInteractions() {
   $('#browse').addEventListener('click', pickFile);
   $('#replace').addEventListener('click', pickFile);
-  $('#example').addEventListener('click', () => loadExample());
+  $('#example').addEventListener('click', () => loadExample(exampleSession));
   $('#file').addEventListener('change', event => {
     const file = event.target.files[0];
     if (file) loadAudio(file, file.name);
@@ -1040,16 +1040,22 @@ function saveSession() {
   }), 400);
 }
 
+// The example button picks up where the example was left, so only an own
+// file needs a button of its own to continue with.
+let exampleSession = null;
+
 async function offerResume() {
   const file = await load('file');
   if (!file) return;
+  if (file.example) {
+    exampleSession = await load('session');
+    return;
+  }
   const button = $('#resume');
-  button.querySelector('b').textContent = file.example ? 'the example' : file.name;
+  button.querySelector('b').textContent = file.name;
   button.hidden = false;
   button.addEventListener('click', async () => {
-    const session = await load('session');
-    if (file.example) loadExample(session);
-    else loadAudio(file.blob, file.name, { restore: session });
+    loadAudio(file.blob, file.name, { restore: await load('session') });
   });
 }
 
