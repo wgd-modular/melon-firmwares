@@ -324,8 +324,11 @@ b { font-weight: 800; }
 /* Workspace */
 
 .workspace {
+  --h: clamp(480px, calc(100vh - 240px), 760px);
+  --mm: calc(var(--h) / 128.498);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* The panel, the readouts and gap beside it, and the card's padding */
+  grid-template-columns: minmax(0, 1fr) calc(var(--mm) * 20 + 192px);
   gap: 18px 22px;
   align-items: start;
 }
@@ -337,7 +340,6 @@ b { font-weight: 800; }
   grid-row: 1 / span 4;
   position: sticky;
   top: 18px;
-  width: min-content;
 }
 
 /* Waveform */
@@ -594,8 +596,6 @@ input[type="range"]::-moz-range-thumb {
 /* Module */
 
 .rack {
-  --h: clamp(480px, calc(100vh - 240px), 760px);
-  --mm: calc(var(--h) / 128.498);
   --led: #ff2a2a;
   --level: 0;
   display: flex;
@@ -851,15 +851,14 @@ dialog section > p + p { margin-top: 10px; }
 /* Narrow screens */
 
 @media (max-width: 920px) {
-  .workspace { grid-template-columns: minmax(0, 1fr); }
+  .workspace { --h: clamp(520px, 150vw, 680px); grid-template-columns: minmax(0, 1fr); }
   .wave-card { order: 1; }
-  .module { order: 2; grid-column: 1; grid-row: auto; position: static; width: auto; }
+  .module { order: 2; grid-column: 1; grid-row: auto; position: static; }
   .sound-card { order: 3; }
   .quality-card { order: 4; }
   .send-card { order: 5; }
   .wave-card, .sound-card, .quality-card, .send-card { grid-column: 1; }
 
-  .rack { --h: clamp(520px, 150vw, 680px); }
   .readouts { flex: 1 1 auto; width: auto; max-width: 260px; }
 
   .qualities { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
