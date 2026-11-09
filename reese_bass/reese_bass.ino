@@ -51,14 +51,22 @@ const float FILTER_MIN_HZ        = 80.0f;    // filter cutoff range, POT1 (A0)
 const float FILTER_MAX_HZ        = 8000.0f;
 const float RESONANCE            = 0.3f;     // filter feedback, 0 = none (>~0.9-1.0 can self-oscillate)
 const float FILTER_TRACKING      = 1.0f / 3.0f; // pitch tracking amount on the cutoff
-const float ATTACK_TIME_S        = 0.01f;    // envelope attack (s)
+const float ATTACK_TIME_S        = 0.01f;    // default envelope attack (s)
 const float HOLD_TIME_S          = 0.1f;     // hold after gate low, before release starts (s)
-const float RELEASE_TIME_S       = 1.0f;     // exponential release tail (s)
+const float RELEASE_TIME_S       = 1.0f;     // default exponential release tail (s)
 #define NUM_OSC 3                            // oscillator count - 2 or 3 (see updateIncrements())
 
 // ---- DO NOT CHANGE: derived from the above, or tied to setup() ----
-const float ATTACK_INC      = 1.0f / (ATTACK_TIME_S * sampleRate);
-const float RELEASE_COEFF   = expf(-1.0f / (RELEASE_TIME_S * sampleRate));
+// Runtime envelope controls. Defaults are reset on every power-up; nothing
+// is written to flash. The pots use logarithmic time ranges for useful control.
+const float ATTACK_MIN_S  = 0.002f; // 2 ms
+const float ATTACK_MAX_S  = 1.000f; // 1 s
+const float RELEASE_MIN_S = 0.010f; // 10 ms
+const float RELEASE_MAX_S = 5.000f; // 5 s
+volatile float attackTimeS  = ATTACK_TIME_S;
+volatile float releaseTimeS = RELEASE_TIME_S;
+volatile float attackInc    = 1.0f / (ATTACK_TIME_S * sampleRate);
+volatile float releaseCoeff = expf(-1.0f / (RELEASE_TIME_S * sampleRate));
 const uint32_t HOLD_SAMPLES = (uint32_t)(HOLD_TIME_S * sampleRate);
 
 /* --------------------------------------------------
@@ -103,6 +111,13 @@ volatile float lfoDepthScale = 0.0f; // 0..1, proportional to current detune amo
 
 /* Preset: narrow (subtle) / wide (aggressive) detune range */
 bool widePreset = false;
+
+// Envelope edit mode and soft-takeover state. Defaults reset on power-up.
+bool envelopeEditMode = false;
+bool attackPickup = false;
+bool releasePickup = false;
+int previousA0 = 0;
+int previousA1 = 0;
 
 /* --------------------------------------------------
    Potentiometer reading with averaging + lock/hysteresis,
@@ -179,12 +194,12 @@ int16_t computeSample() {
   // exponentially towards 0 (natural-sounding release curve).
   if (gateOpen) {
     holdCounter = HOLD_SAMPLES; // keep the hold timer topped up while gate is high
-    envLevel += ATTACK_INC;
+    envLevel += attackInc;
     if (envLevel > 1.0f) envLevel = 1.0f;
   } else if (holdCounter > 0) {
     holdCounter--; // holding - envelope level stays where it is
   } else {
-    envLevel *= RELEASE_COEFF;
+    envLevel *= releaseCoeff;
     if (envLevel < NOISE_GATE_THRESHOLD) {
       envLevel = 0.0f;
       // Envelope has fully closed - clear the filter's internal
@@ -248,6 +263,25 @@ void onAudioTransmit() {
   }
 }
 
+// Map a knob position to an envelope time using an exponential/log scale.
+float potToTime(int pot, float minTime, float maxTime) {
+  float x = constrain((float)pot / 1023.0f, 0.0f, 1.0f);
+  return minTime * expf(x * logf(maxTime / minTime));
+}
+
+// Find where the current time would sit on the knob, for soft takeover.
+int timeToPot(float timeS, float minTime, float maxTime) {
+  float t = constrain(timeS, minTime, maxTime);
+  float x = logf(t / minTime) / logf(maxTime / minTime);
+  return (int)(x * 1023.0f + 0.5f);
+}
+
+bool crossedOrReached(int previous, int current, int target) {
+  if (abs(current - target) <= 10) return true;
+  return ((previous < target && current > target) ||
+          (previous > target && current < target));
+}
+
 /* --------------------------------------------------
    SETUP
 -------------------------------------------------- */
@@ -278,68 +312,106 @@ void setup() {
    - reacts to gate and button
 -------------------------------------------------- */
 void loop() {
-  // Read gate input
+  // Read gate input.
   gateOpen = digitalRead(7);
 
-  // Button: toggle preset (narrow/wide)
+  // Button behavior:
+  // - hold for 3 seconds to enter/leave envelope edit mode
+  // - short press toggles the narrow/wide preset in normal mode
+  // - short press exits envelope edit mode
   static bool prevBtn = HIGH;
+  static uint32_t pressStartMs = 0;
+  static bool longPressHandled = false;
   bool currBtn = digitalRead(6);
+  uint32_t now = millis();
+
   if (prevBtn == HIGH && currBtn == LOW) {
-    widePreset = !widePreset;
+    pressStartMs = now;
+    longPressHandled = false;
+  }
+  if (currBtn == LOW && !longPressHandled && (uint32_t)(now - pressStartMs) >= 3000UL) {
+    envelopeEditMode = !envelopeEditMode;
+    longPressHandled = true;
+    if (envelopeEditMode) {
+      attackPickup = false;
+      releasePickup = false;
+    }
+  }
+  if (prevBtn == LOW && currBtn == HIGH) {
+    if (!longPressHandled) {
+      if (envelopeEditMode) {
+        envelopeEditMode = false;
+      } else {
+        widePreset = !widePreset;
+      }
+    }
   }
   prevBtn = currBtn;
 
-  // LED color: blue = narrow preset, orange = wide preset.
-  // Brightness follows the envelope, so the LED fades out along
-  // with the long release instead of just snapping dim on gate low.
-  if (widePreset) {
-    pixel.setPixelColor(0, pixel.Color(255, 90, 0));
-  } else {
-    pixel.setPixelColor(0, pixel.Color(0, 90, 255));
-  }
-  uint8_t brightness = (uint8_t)(15 + envLevel * 80.0f); // 15..95
-  pixel.setBrightness(brightness);
-  pixel.show();
-
-  // POT3/CV (A2): single pitch source (knob + CV combined on the
-  // same hardware node), Braids-style. Reading uses averaging +
-  // lock/hysteresis (see readPotFiltered) to suppress ADC noise,
-  // which would otherwise wobble the base pitch of all oscillators
-  // together. Scaling taken from the melon-firmwares VCO reference
-  // (accounts for MOD2's inverting CV op-amp stage: higher CV
-  // voltage -> lower ADC reading).
-  int a2 = readPotFiltered(A2, potA2State);
-  const float cvOct = -(a2 / 1023.0f) * 8.3f * (33.0f / 55.0f) * TUNE_CAL;
-
-  baseFreq = REF_FREQ * powf(2.0f, cvOct + PITCH_OCTAVE_OFFSET);
-  baseFreq = constrain(baseFreq, 5.0f, 2000.0f); // safety clamp
-
-  // POT1 (A0): two-pole low-pass filter cutoff frequency, plus
-  // 1/3 pitch tracking - for every octave the pitch (cvOct) goes
-  // up, the cutoff follows by 1/3 octave. Note the cascade's actual
-  // -3dB point sits a bit below this per-stage value (typical for
-  // a simple ladder-style cascade).
+  // Read the three controls once per loop. POT3/A2 remains the combined
+  // pitch knob + external 1 V/oct CV input; its existing tracking is unchanged.
   int a0 = readPotFiltered(A0, potA0State);
-  float cutoffHz = FILTER_MIN_HZ + (a0 / 1023.0f) * (FILTER_MAX_HZ - FILTER_MIN_HZ);
-  cutoffHz *= powf(2.0f, cvOct * FILTER_TRACKING);
-  cutoffHz = constrain(cutoffHz, FILTER_MIN_HZ, FILTER_MAX_HZ);
-  filterAlpha = 1.0f - expf(-2.0f * PI * cutoffHz / sampleRate);
-
-  // POT2 (A1): detune amount, scaled depending on preset
   int a1 = readPotFiltered(A1, potA1State);
-  float maxDetune = widePreset ? 35.0f : 15.0f;
-  detuneCents = (a1 / 1023.0f) * maxDetune;
-  lfoDepthScale = detuneCents / maxDetune; // 0 at Detune=0, 1 at Detune=max
+  int a2 = readPotFiltered(A2, potA2State);
 
-  // LFO speed: scales with pitch (higher pitch -> faster LFO),
-  // with the preset acting as a base rate / multiplier on top.
-  // Reference point is REF_FREQ (the pot/CV's top of range), so at
-  // that pitch the LFO runs exactly at the preset's base rate.
+  // Envelope edit mode: POT1 = attack, POT2 = release. Soft takeover avoids
+  // jumping to the physical knob position when entering the mode.
+  if (envelopeEditMode) {
+    int attackTarget = timeToPot(attackTimeS, ATTACK_MIN_S, ATTACK_MAX_S);
+    int releaseTarget = timeToPot(releaseTimeS, RELEASE_MIN_S, RELEASE_MAX_S);
+
+    if (!attackPickup && crossedOrReached(previousA0, a0, attackTarget)) attackPickup = true;
+    if (!releasePickup && crossedOrReached(previousA1, a1, releaseTarget)) releasePickup = true;
+
+    if (attackPickup) {
+      float newAttack = potToTime(a0, ATTACK_MIN_S, ATTACK_MAX_S);
+      attackTimeS = newAttack;
+      attackInc = 1.0f / (newAttack * sampleRate);
+    }
+    if (releasePickup) {
+      float newRelease = potToTime(a1, RELEASE_MIN_S, RELEASE_MAX_S);
+      releaseTimeS = newRelease;
+      releaseCoeff = expf(-1.0f / (newRelease * sampleRate));
+    }
+  } else {
+    // Normal mode: POT1 = filter cutoff; POT2 = detune amount.
+    float cutoffHz = FILTER_MIN_HZ + (a0 / 1023.0f) * (FILTER_MAX_HZ - FILTER_MIN_HZ);
+    const float cvOct = -(a2 / 1023.0f) * 8.3f * (33.0f / 55.0f) * TUNE_CAL;
+    cutoffHz *= powf(2.0f, cvOct * FILTER_TRACKING);
+    cutoffHz = constrain(cutoffHz, FILTER_MIN_HZ, FILTER_MAX_HZ);
+    filterAlpha = 1.0f - expf(-2.0f * PI * cutoffHz / sampleRate);
+
+    float maxDetune = widePreset ? 35.0f : 15.0f;
+    detuneCents = (a1 / 1023.0f) * maxDetune;
+    lfoDepthScale = detuneCents / maxDetune;
+  }
+
+  previousA0 = a0;
+  previousA1 = a1;
+
+  // Pitch calculation is intentionally unchanged from the supplied Reese
+  // Bass source, preserving its existing combined POT3 + 1 V/oct behavior.
+  const float cvOct = -(a2 / 1023.0f) * 8.3f * (33.0f / 55.0f) * TUNE_CAL;
+  baseFreq = REF_FREQ * powf(2.0f, cvOct + PITCH_OCTAVE_OFFSET);
+  baseFreq = constrain(baseFreq, 5.0f, 2000.0f);
+
+  // LFO speed scales with pitch, with the preset setting its base rate.
   float presetBaseRate = widePreset ? 0.6f : 0.2f;
   lfoRateHz = presetBaseRate * (baseFreq / REF_FREQ);
   lfoRateHz = constrain(lfoRateHz, 0.05f, 8.0f);
 
-  updateIncrements();
+  // LED: blue = narrow, orange = wide, purple = envelope edit mode.
+  if (envelopeEditMode) {
+    pixel.setPixelColor(0, pixel.Color(180, 0, 255));
+  } else if (widePreset) {
+    pixel.setPixelColor(0, pixel.Color(255, 90, 0));
+  } else {
+    pixel.setPixelColor(0, pixel.Color(0, 90, 255));
+  }
+  uint8_t brightness = (uint8_t)(15 + envLevel * 80.0f);
+  pixel.setBrightness(brightness);
+  pixel.show();
 
+  updateIncrements();
   delay(5); // pots don't need to be polled constantly
 }
