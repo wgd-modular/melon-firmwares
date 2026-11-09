@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.6.1...v1.7.0) (2026-11-09)
+
+
+### Features
+
+* Add adjustable attack and release to Reese Bass ([#38](https://github.com/wgd-modular/melon-firmwares/issues/38)) ([ac55955](https://github.com/wgd-modular/melon-firmwares/commit/ac5595581158470e518431929e664bb7f96451e6))
+
 ## [1.6.1](https://github.com/wgd-modular/melon-firmwares/compare/v1.6.0...v1.6.1) (2026-11-06)
 
 
