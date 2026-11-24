@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.7.0...v1.8.0) (2026-11-24)
+
+
+### Features
+
+* Add the Banana chord oscillator ([#41](https://github.com/wgd-modular/melon-firmwares/issues/41)) ([c44bac7](https://github.com/wgd-modular/melon-firmwares/commit/c44bac7ed1b4385b589eee4a2a0316a5b1bf3227))
+* Add the Cherry additive oscillator ([#40](https://github.com/wgd-modular/melon-firmwares/issues/40)) ([41bdb63](https://github.com/wgd-modular/melon-firmwares/commit/41bdb631c0539f36840f2c56ecdc5c5d6e3ac6fc))
+
 ## [1.7.0](https://github.com/wgd-modular/melon-firmwares/compare/v1.6.1...v1.7.0) (2026-11-09)
 
 
